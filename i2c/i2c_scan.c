@@ -1,7 +1,7 @@
 #include "i2c_scan.h"
 
 #include <stdio.h>
-#include "pico/error.h"
+#include "pico/error_drv.h"
 
 /**
  * @brief Scan the I2C bus for devices using a 1-byte read probe.
