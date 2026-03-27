@@ -4,54 +4,206 @@
 #include <stdint.h>
 
 /**
- * @brief 3-axis vector (raw sensor values)
+ * @brief Sensor selection and modifier flags for read and calibration operations.
+ *
+ * @details
+ * This bitmask is used to select one or more sensor groups for driver
+ * operations such as sensor reads or calibration.
+ *
+ * Base sensor flags:
+ * - @ref MPU_ACCEL selects the accelerometer
+ * - @ref MPU_TEMP selects the temperature sensor
+ * - @ref MPU_GYRO selects the gyroscope
+ * - @ref MPU_ALL selects all three primary sensor groups
+ *
+ * Additional modifier flags:
+ * - @ref MPU_SCALED requests conversion from raw register values to physical
+ *   units, if supported by the called function
+ * - @ref MPU_ACCEL_X, @ref MPU_ACCEL_Y, and @ref MPU_ACCEL_Z indicate the
+ *   accelerometer axis used as gravity reference during calibration
+ *
+ * @note
+ * The axis calibration flags include @ref MPU_ACCEL internally.
  */
-typedef struct {
-	int16_t x;
-	int16_t y;
-	int16_t z;
-} mpu_vec3_raw_t;
+typedef enum{
+	MPU_ACCEL   =  (1 << 0), /**< Accelerometer sensor flag. */
+	MPU_TEMP    =  (1 << 1), /**< Temperature sensor flag. */
+	MPU_GYRO    =  (1 << 2), /**< Gyroscope sensor flag. */
+	MPU_SCALED  =  (1 << 3), /**< Modifier flag: use scaled values instead of raw register values. */
 
+	/* Axis modifiers for calibration */
+	MPU_ACCEL_X = ((1 << 4) | MPU_ACCEL), /**< Accelerometer calibration with X-axis as gravity reference. */
+	MPU_ACCEL_Y = ((1 << 5) | MPU_ACCEL), /**< Accelerometer calibration with Y-axis as gravity reference. */
+	MPU_ACCEL_Z = ((1 << 6) | MPU_ACCEL), /**< Accelerometer calibration with Z-axis as gravity reference. */
+
+	MPU_ALL     = (MPU_ACCEL | MPU_TEMP | MPU_GYRO) /**< All primary sensor flags combined. */
+} mpu_sensor_t;
 
 /**
- * @brief MPU raw sensor frame (14 bytes, burst read)
+ * @brief Cycle mode control values.
  *
- * Layout (big-endian as provided by the MPU):
+ * @details
+ * These values are used by @ref mpu_cycle_mode() to configure the cycle-related
+ * power mode behavior of the MPU.
  *
- *   ACCEL_X  [0..1]
- *   ACCEL_Y  [2..3]
- *   ACCEL_Z  [4..5]
- *   TEMP     [6..7]
- *   GYRO_X   [8..9]
- *   GYRO_Y   [10..11]
- *   GYRO_Z   [12..13]
+ * The naming is intentionally register-oriented and follows the driver's
+ * low-level configuration style.
+ */
+typedef enum {
+    MPU_CYCLE_LP  = 2, /**< Low-power cycle mode selection. */
+    MPU_CYCLE_ON  = 1, /**< Cycle mode enabled. */
+    MPU_CYCLE_OFF = 0  /**< Cycle mode disabled. */
+} mpu_cycle_t;
+
+/**
+ * @brief Sleep and temperature control flags for PWR_MGMT_1 handling.
  *
- * Provides:
- * - raw byte buffer for I2C transfers
- * - structured access for convenient field usage
+ * @details
+ * These flags are intended for register-near driver configuration through
+ * @ref mpu_sleep().
  *
- * Important:
- * - Data is big-endian (MPU output)
- * - RP2040 is little-endian
- * - Values must be byte-swapped before direct use
+ * The naming follows the enabled/disabled state of the corresponding control
+ * function as used by this driver:
+ * - @ref MPU_SLEEP_DEVICE_ON enables device sleep control
+ * - @ref MPU_SLEEP_DEVICE_OFF disables device sleep control
+ * - @ref MPU_SLEEP_TEMP_ON enables the temperature-related control flag
+ * - @ref MPU_SLEEP_TEMP_OFF disables the temperature-related control flag
  *
- * Example conversion:
- *   int16_t v = (raw << 8) | (raw >> 8);
+ * @note
+ * This enum is intentionally kept close to the register-oriented driver design
+ * and should be interpreted in the context of the power-management register
+ * layout.
+ */
+typedef enum {
+    MPU_SLEEP_DEVICE_ON  = (1 << 0), /**< Enable device sleep control. */
+    MPU_SLEEP_DEVICE_OFF = (0 << 0), /**< Disable device sleep control. */
+    MPU_SLEEP_TEMP_ON    = (1 << 1), /**< Enable the temperature-related control flag. */
+    MPU_SLEEP_TEMP_OFF   = (0 << 1), /**< Disable the temperature-related control flag. */
+    MPU_SLEEP_ALL_OFF    = 0         /**< Clear all sleep-related control flags. */
+} mpu_sleep_t;
+
+/**
+ * @brief Available 7-bit I2C device addresses.
  *
- * Notes:
- * - struct is packed to guarantee exact 14-byte layout
- * - safe for direct overlay with raw buffer
+ * @details
+ * The effective address depends on the hardware level applied to the AD0 pin.
+ */
+typedef enum {
+    MPU_ADDR_AD0_GND = 0x68, /**< Device address when AD0 is tied to GND. */
+    MPU_ADDR_AD0_VCC = 0x69  /**< Device address when AD0 is tied to VCC. */
+} mpu_addr_t;
+
+/**
+ * @brief Reset control flags for internal modules and signal paths.
+ *
+ * @details
+ * These flags are used by @ref mpu_reset() to request individual reset actions
+ * or a full device reset.
+ *
+ * The enum is intentionally register-near and mirrors low-level reset control
+ * usage rather than providing a high-level abstraction.
+ */
+typedef enum {
+    MPU_RESET_ALL      = (1 << 0), /**< Reset all supported internal sensor and module paths. */
+    MPU_RESET_TEMP     = (1 << 1), /**< Reset the temperature signal path. */
+    MPU_RESET_ACCEL    = (1 << 2), /**< Reset the accelerometer signal path. */
+    MPU_RESET_GYRO     = (1 << 3), /**< Reset the gyroscope signal path. */
+    MPU_RESET_SIG_COND = (1 << 4), /**< Reset sensor signal conditioning paths. */
+    MPU_RESET_I2C_MST  = (1 << 5), /**< Reset the internal I2C master block. */
+    MPU_RESET_FIFO     = (1 << 6), /**< Reset the FIFO buffer. */
+    MPU_RESET_DEVICE   = (1 << 7)  /**< Trigger a full device reset. */
+} mpu_reset_t;
+
+/**
+ * @brief Raw 3-axis sensor vector.
+ *
+ * @details
+ * Stores signed 16-bit X, Y, and Z axis values exactly as used for raw sensor
+ * data handling.
+ */
+typedef struct {
+	int16_t x; /**< Raw X-axis value. */
+	int16_t y; /**< Raw Y-axis value. */
+	int16_t z; /**< Raw Z-axis value. */
+} mpu_vec3_raw_t;
+
+/**
+ * @brief Raw 14-byte MPU sensor frame used for burst reads.
+ *
+ * @details
+ * This union provides:
+ * - direct raw byte access through @ref raw
+ * - structured field access through @ref accel, @ref temp, and @ref gyro
+ *
+ * Burst-read layout as provided by the MPU:
+ * - bytes 0..1   : ACCEL_XOUT
+ * - bytes 2..3   : ACCEL_YOUT
+ * - bytes 4..5   : ACCEL_ZOUT
+ * - bytes 6..7   : TEMP_OUT
+ * - bytes 8..9   : GYRO_XOUT
+ * - bytes 10..11 : GYRO_YOUT
+ * - bytes 12..13 : GYRO_ZOUT
+ *
+ * @note
+ * MPU multi-byte output registers are stored in big-endian byte order.
+ *
+ * @warning
+ * On little-endian systems, 16-bit values must be byte-swapped before direct
+ * arithmetic use when overlaid from the raw byte buffer.
  */
 typedef union {
 
-	uint8_t raw[14];
+	uint8_t raw[14]; /**< Raw 14-byte burst-read buffer. */
 
 	struct __attribute__((packed)){
-		mpu_vec3_raw_t accel;
-		int16_t        temp;
-		mpu_vec3_raw_t gyro;
+		mpu_vec3_raw_t accel; /**< Raw accelerometer output triplet. */
+		int16_t        temp;  /**< Raw temperature output value. */
+		mpu_vec3_raw_t gyro;  /**< Raw gyroscope output triplet. */
 	};
 
 } mpu_frame_t;
+
+// =====================
+// === Data Structur ===
+// =====================
+
+/**
+ * @brief Main MPU device state structure.
+ *
+ * @details
+ * This structure stores the latest sensor values read from the device.
+ *
+ * It contains:
+ * - raw accelerometer, gyroscope, and temperature values
+ * - scaled accelerometer values in g
+ * - scaled gyroscope values in degrees per second
+ * - scaled temperature in degrees Celsius
+ *
+ * @note
+ * This structure currently represents sampled measurement state.
+ * It does not yet store the full hardware configuration state.
+ */
+typedef struct mpu_s{
+	// =====================
+	// === Sensor Values ===
+	// =====================
+	struct{
+		struct{
+			struct{ int16_t x,y,z; } raw; /**< Raw accelerometer register values. */
+			struct{ float x,y,z; } g;     /**< Scaled accelerometer values in g. */
+		} accel;
+
+		struct{
+			struct{ int16_t x,y,z; } raw; /**< Raw gyroscope register values. */
+			struct{ float x,y,z; } dps;   /**< Scaled gyroscope values in degrees per second. */
+		} gyro;
+
+		struct{
+			int16_t raw;   /**< Raw temperature register value. */
+			float celsius; /**< Scaled temperature in degrees Celsius. */
+		} temp;
+	} v; /**< Latest sampled sensor values. */
+
+} mpu_s;
 
 #endif
