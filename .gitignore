@@ -26,7 +26,6 @@ build/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-CMakeLists.txt
 compile_commands.json
 
 # -----------------------------------------------------------------------------
