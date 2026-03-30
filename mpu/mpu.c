@@ -29,15 +29,33 @@
 #include "mpu_reg_map.h"
 #include "mpu.h"
 #include "i2c.h"
+#include "byte_cache.h"
+#include "byte_ops.h"
 
+// ===============
+// === Structs ===
+// ===============
+typedef union {
+    uint8_t raw[14];
 
-// =====================
-// === Configuration ===
-// =====================
+    struct {
+        uint8_t head;
+        uint8_t data[13];
+    } tx;
+
+    struct {
+        byte_u8_t head;
+        byte_u8_t data[13];
+    } bits;
+
+    uint16_t u16[7];
+} byte_cache14_t;
+
+// Configuration
 typedef struct mpu_conf{
 	mpu_addr_t addr; // Device Address
+	uint8_t who_am_i;
 	struct{ int32_t x, y, z; } offset_gyro, offset_accel;
-
 	struct{ float accel, gyro; } fsr_div;
 } mpu_conf_t;
 
@@ -56,7 +74,8 @@ bool _mpu_read_reg(uint8_t reg, uint8_t *out, uint8_t how_many);
 // === Global Variables ===
 // ========================
 /** @brief Internal I2C data cache for burst reads and register manipulations. */
-static uint8_t gc_mpu[14] = {0};
+static mpu_cache_t gc_mpu[14] = {0};
+static byte_cache14_t gcs_mpu = {0};
 
 /** @brief Active device pointer used by all standalone functions.
  *  Set via @ref mpu_init or @ref mpu_use_struct. */
@@ -64,7 +83,7 @@ static uint8_t gc_mpu[14] = {0};
  mpu_conf_t g_mpu_conf = {0};
 
 /** @brief Cache for the last I2C operation return value (byte count or error). */
-static int g_mpu_ret_cache = 0;
+static int gc_mpu_ret = 0;
 
 static _i2c_hw_config g_i2c;
 
@@ -86,7 +105,8 @@ mpu_s mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr){
 	mpu_s mpu; // Initalize device struct and function pointers
 	memset(&mpu, 0, sizeof(mpu));
 	mpu.conf = &g_mpu_conf;
-
+int size = sizeof(g_mpu_conf);
+	LOG_W("conf=%d, value=%d", size, sizeof(mpu));
 	if(!i2c_hw){
 		g_i2c.hw = i2c1_hw;
 		LOG_W("i2c_hw = NULL, fallback=i2c1");
@@ -179,11 +199,12 @@ bool _mpu_write_reg(uint8_t *data, uint8_t how_many, bool nostop){
 		LOG_I("use mpu_use_struct() to set g_mpu");
 		return false;
 	}
-	g_mpu_ret_cache = _i2c_write_buffer(&g_i2c, g_mpu->conf->addr, data, how_many, nostop);
-	if(g_mpu_ret_cache){
+
+	gc_mpu_ret = _i2c_write_buffer(&g_i2c, g_mpu->conf->addr, data, how_many, nostop);
+	if(gc_mpu_ret){
 		LOG_D("register write ok reg=0x%02X len=%u", data[0], how_many);
 	}else{
-		LOG_E("I2C write failed reg=0x%02X len=%u ret=%d", data[0], how_many, g_mpu_ret_cache);
+		LOG_E("I2C write failed reg=0x%02X len=%u ret=%d", data[0], how_many, gc_mpu_ret);
 		return false;
 	}
 
@@ -215,12 +236,12 @@ bool _mpu_read_reg(uint8_t reg, uint8_t *out, uint8_t how_many){
 		LOG_E("register write failed reg=0x%02X", reg);
 		return false;
 	}
-	g_mpu_ret_cache = _i2c_read_buffer(&g_i2c, g_mpu->conf->addr, out, how_many);
-	if(g_mpu_ret_cache){
+	gc_mpu_ret = _i2c_read_buffer(&g_i2c, g_mpu->conf->addr, out, how_many);
+	if(gc_mpu_ret){
 		LOG_D("register read ok reg=0x%02X len=%u", reg, how_many);
 		return true;
 	}else{
-		LOG_E("I2C read failed reg=0x%02X len=%u ret=%d", reg, how_many, g_mpu_ret_cache);
+		LOG_E("I2C read failed reg=0x%02X len=%u ret=%d", reg, how_many, gc_mpu_ret);
 		return false;
 	}
 }
@@ -234,26 +255,26 @@ bool _mpu_read_reg(uint8_t reg, uint8_t *out, uint8_t how_many){
  * @return false If communication failed or the device ID is unknown.
  */
 bool mpu_who_am_i(void){
-	if(!_mpu_read_reg(MPU_REG_WHO_AM_I, gc_mpu, 1)){
+	if(!_mpu_read_reg(MPU_REG_WHO_AM_I, &g_mpu->conf->who_am_i, 1)){
 		LOG_E("_mpu_read_reg() failed");
 		return false;
 	}
 
-	switch (gc_mpu[0]) {
+	switch (g_mpu->conf->who_am_i) {
 		case MPU60X0_WHO_AM_I:
-		    LOG_I("device detected type=MPU60X0 who_am_i=0x%02X", gc_mpu[0]);
+		    LOG_I("device detected type=MPU60X0 who_am_i=0x%02X", g_mpu->conf->who_am_i);
 		    return true;
 		case MPU9250_WHO_AM_I:
-		    LOG_I("device detected type=MPU9250 who_am_i=0x%02X", gc_mpu[0]);
+		    LOG_I("device detected type=MPU9250 who_am_i=0x%02X", g_mpu->conf->who_am_i);
 		    return true;
 		case MPU9255_WHO_AM_I:
-		    LOG_I("device detected type=MPU9255 who_am_i=0x%02X", gc_mpu[0]);
+		    LOG_I("device detected type=MPU9255 who_am_i=0x%02X", g_mpu->conf->who_am_i);
 		    return true;
 		case MPU6500_WHO_AM_I:
-		    LOG_I("device detected type=MPU6500 who_am_i=0x%02X", gc_mpu[0]);
+		    LOG_I("device detected type=MPU6500 who_am_i=0x%02X", g_mpu->conf->who_am_i);
 		    return true;
 		default:
-		    LOG_E("device not recognized who_am_i=0x%02X", gc_mpu[0]);
+		    LOG_E("device not recognized who_am_i=0x%02X", g_mpu->conf->who_am_i);
 		    return false;
 	}
 }
@@ -262,19 +283,20 @@ bool mpu_who_am_i(void){
  * @brief Puts the MPUs I²C in pass-through-mode
  */
 bool mpu_bypass(bool active){
-	if(!_mpu_read_reg(MPU_REG_INT_PIN_CFG, gc_mpu, 1)){
+	if(!_mpu_read_reg(MPU_REG_INT_PIN_CFG, gcs_mpu.tx.data, 1)){
 		LOG_E("I2C read failed reg=0x%02X len=1", MPU_REG_INT_PIN_CFG);
 		return false;
 	}
 
+	gcs_mpu.tx.head = MPU_REG_INT_PIN_CFG;
 	if(active){
-		gc_mpu[0] |= MPU_I2C_BYPASS_EN;
+		gcs_mpu.tx.data[0] |= MPU_I2C_BYPASS_EN;
 	}else{
-		gc_mpu[0] &= ~MPU_I2C_BYPASS_EN;
+		gcs_mpu.tx.data[0] &= ~MPU_I2C_BYPASS_EN;
 	}
 
-	if(!_mpu_write_reg((uint8_t[]){MPU_REG_INT_PIN_CFG, gc_mpu[0]}, 2, false)){
-		LOG_E("I2C write failed reg=0x%02X value=0x%02X len=2 stop=false", MPU_REG_INT_PIN_CFG, gc_mpu[0]);
+	if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+		LOG_E("I2C write failed reg=0x%02X value=0x%02X len=2 stop=false", gcs_mpu.tx.head, gcs_mpu.tx.data[0]);
 		return false;
 	}
 	LOG_I("bypass set active=%s", active ? "true" : "false");
@@ -304,51 +326,55 @@ bool mpu_bypass(bool active){
 bool mpu_reset(mpu_reset_t reset){
 	// 1. Read current register values into global cache to preserve existing bits
 	// We read 3 bytes starting from SIGNAL_PATH_RESET (likely covering USER_CTRL & PWR_MGMT_1)
-	if (!_mpu_read_reg(MPU_REG_SIGNAL_PATH_RESET, (uint8_t[]){gc_mpu[1], gc_mpu[2], gc_mpu[3]}, 3)){
+	gcs_mpu.tx.head = MPU_REG_SIGNAL_PATH_RESET;
+	if (!_mpu_read_reg(gcs_mpu.tx.head, gcs_mpu.tx.data, 3)){
 		LOG_E("register read failed reg=0x%02X len=3", MPU_REG_SIGNAL_PATH_RESET);
 		return false;
 	}
 
 	// 2. Modify SIGNAL_PATH_RESET bits (TEMP, ACCEL, GYRO)
-	if (reset & MPU_RESET_TEMP)  gc_mpu[1] |= MPU_TEMP_RESET;
-	if (reset & MPU_RESET_ACCEL) gc_mpu[1] |= MPU_ACCEL_RESET;
-	if (reset & MPU_RESET_GYRO)  gc_mpu[1] |= MPU_GYRO_RESET;
+	if (reset & MPU_RESET_TEMP)  gcs_mpu.tx.data[0] |= MPU_TEMP_RESET;
+	if (reset & MPU_RESET_ACCEL) gcs_mpu.tx.data[0] |= MPU_ACCEL_RESET;
+	if (reset & MPU_RESET_GYRO)  gcs_mpu.tx.data[0] |= MPU_GYRO_RESET;
 
 	// 3. Modify USER_CTRL bits (SIG_COND, I2C_MST, FIFO)
-	if (reset & MPU_RESET_SIG_COND) gc_mpu[2] |= MPU_SIG_COND_RESET;
-	if (reset & MPU_RESET_I2C_MST)  gc_mpu[2] |= MPU_I2C_MST_RESET;
-	if (reset & MPU_RESET_FIFO)     gc_mpu[2] |= MPU_FIFO_RESET;
+	if (reset & MPU_RESET_SIG_COND) gcs_mpu.tx.data[1] |= MPU_SIG_COND_RESET;
+	if (reset & MPU_RESET_I2C_MST)  gcs_mpu.tx.data[1] |= MPU_I2C_MST_RESET;
+	if (reset & MPU_RESET_FIFO)     gcs_mpu.tx.data[1] |= MPU_FIFO_RESET;
 
 	// 4. Modify PWR_MGMT_1 bits (DEVICE_RESET)
-	if (reset & MPU_RESET_DEVICE) gc_mpu[3] |= MPU_DEVICE_RESET;
+	if (reset & MPU_RESET_DEVICE) gcs_mpu.tx.data[2] |= MPU_DEVICE_RESET;
 
 	// 5. Execution Logic
 	if (reset & MPU_RESET_ALL){
 		LOG_I("full chip reset sequence started");
 
 		// Trigger Main Device Reset via PWR_MGMT_1
-		gc_mpu[2] |= MPU_DEVICE_RESET; // Warning: index logic should match your register mapping
-		if (!_mpu_write_reg((uint8_t[]){MPU_REG_PWR_MGMT_1, gc_mpu[3]}, 2, false)) return false;
+		gcs_mpu.tx.head = MPU_REG_PWR_MGMT_1;
+		gcs_mpu.tx.data[0] = gcs_mpu.tx.data[2] | MPU_DEVICE_RESET; // Warning: index logic should match your register mapping
+		if (!_mpu_write_reg(gcs_mpu.raw, 2, false)) return false;
 		sleep_ms(150); // Wait for internal reboot
 
 		// Reset Signal Paths (Analog/Digital Filters)
 		LOG_D("signal path reset started");
-		gc_mpu[0] |= (MPU_TEMP_RESET | MPU_ACCEL_RESET | MPU_GYRO_RESET);
-		if (!_mpu_write_reg((uint8_t[]){MPU_REG_SIGNAL_PATH_RESET, gc_mpu[1]}, 2, false)) return false;
+		gcs_mpu.tx.head = MPU_REG_SIGNAL_PATH_RESET;
+		gcs_mpu.tx.data[0] |= (MPU_TEMP_RESET | MPU_ACCEL_RESET | MPU_GYRO_RESET);
+		if (!_mpu_write_reg(gcs_mpu.raw, 2, false)) return false;
 		sleep_ms(200);
 
 		// Reset User Control (FIFO, I2C Master, Logic)
 		LOG_D("user control reset started");
-		gc_mpu[1] |= (MPU_SIG_COND_RESET | MPU_I2C_MST_RESET | MPU_FIFO_RESET);
-		if (!_mpu_write_reg((uint8_t[]){MPU_REG_USER_CTRL, gc_mpu[2]}, 2, false)) return false;
+		gcs_mpu.tx.head = MPU_REG_USER_CTRL;
+		gcs_mpu.tx.data[0] = gcs_mpu.tx.data[1] | (MPU_SIG_COND_RESET | MPU_I2C_MST_RESET | MPU_FIFO_RESET);
+		if (!_mpu_write_reg(gcs_mpu.raw, 2, false)) return false;
 		sleep_ms(200);
 
 		LOG_I("full reset complete");
 	} else {
 		// Partial reset of specific signal paths
 		LOG_I("partial reset requested mask=0x%02X", reset);
-		gc_mpu[0] = MPU_REG_SIGNAL_PATH_RESET;
-		if (!_mpu_write_reg(gc_mpu, 4, false)){
+		gcs_mpu.tx.head = MPU_REG_SIGNAL_PATH_RESET;
+		if (!_mpu_write_reg(gcs_mpu.raw, 4, false)){
 			LOG_E("partial reset write failed");
 			return false;
 		}
@@ -621,7 +647,7 @@ bool mpu_cycle_mode(mpu_cycle_t mode, mpu_lp_wake_t wake_up_rate){
  * @return false If I2C communication failed.
  *
  * @note The calculated divisors are stored in @c g_mpu_cfg.fsr_div and
- *       applied during @ref mpu_read_sensor() when @ref MPU_SCALED is requested.
+ *       applied during @ref mpu_read() when @ref MPU_SCALED is requested.
  */
 bool mpu_fsr(mpu_fsr_t fsr, mpu_afsr_t afsr){
 	// Read FSR Register
@@ -665,7 +691,7 @@ bool mpu_fsr(mpu_fsr_t fsr, mpu_afsr_t afsr){
  *
  * Averaging multiple samples, this function calculates the static bias of
  * the sensors. The resulting offsets are stored in the global @ref g_mpu struct
- * and used automatically during @ref mpu_read_sensor() if @ref MPU_SCALED is set.
+ * and used automatically during @ref mpu_read() if @ref MPU_SCALED is set.
  *
  * @param sensor  Bitmask of sensors to calibrate.
  *                For @ref MPU_ACCEL, you MUST provide an axis modifier
@@ -716,7 +742,7 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
 		g_mpu->conf->offset_gyro.z = sum_z / samples; // Store z axis average as offset_gyro.z
 
 		LOG_I("gyro calibration done");
-		LOG_D("gyro offset x=%d y=%d z=%d", g_mpu_cfg.offset_gyro.x, g_mpu_cfg.offset_gyro.y, g_mpu_cfg.offset_gyro.z);
+		LOG_D("gyro offset x=%d y=%d z=%d", g_mpu->conf->offset_gyro.x, g_mpu->conf->offset_gyro.y, g_mpu->conf->offset_gyro.z);
 
 	}
 	if (mask & MPU_ACCEL){ // Checks if accelerometer should be calibrated
@@ -794,7 +820,7 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
  * @note FSYNC state is automatically extracted from the Temperature LSB
  *       during burst or temperature reads.
  */
-bool mpu_read_sensor(mpu_sensor_t sensor){
+bool mpu_read(mpu_sensor_t sensor){
 	if(!g_mpu){
 		LOG_E("g_mpu = NULL");
 		LOG_I("use mpu_use_struct() to set g_mpu");

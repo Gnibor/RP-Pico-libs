@@ -280,7 +280,7 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t sample);
  * Depending on the selected flags, this function reads accelerometer,
  * gyroscope, and/or temperature data and may optionally update scaled values.
  */
-bool mpu_read_sensor(mpu_sensor_t sensor);
+bool mpu_read(mpu_sensor_t sensor);
 
 /**
  * @brief Configure cycle-mode behavior.
