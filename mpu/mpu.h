@@ -22,10 +22,10 @@
  * @project MPU Driver for Raspberry Pi Pico
  * @license MIT License (see LICENSE file in root)
  * @copyright Copyright (c) 2026 (Gnibor) Robin Gerhartz
- * @see https://github.com/Gnibor/MPU-Driver-Raspberry-Pi-Pico
+ * @see https://github.com/Gnibor/RP-Pico-libs
  */
-#ifndef MPU60X0_H
-#define MPU60X0_H
+#ifndef MPU_H
+#define MPU_H
 
 #include <stdint.h>
 #include "hardware/structs/i2c.h"
@@ -88,7 +88,7 @@
  *
  * @details
  * If this macro is set to 0, interrupt-related API declarations are excluded
- * from this header at compile time.
+ * from the code at compile time.
  */
 #ifndef MPU_INT_PIN
 #define MPU_INT_PIN 26
@@ -363,4 +363,4 @@ bool mpu_int_motion_cfg(uint8_t ms, uint16_t mg);
 bool mpu_int_status(void);
 
 #endif
-#endif // MPU60X0_H
+#endif // MPU_H

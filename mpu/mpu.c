@@ -34,7 +34,7 @@
 // =====================
 // === Configuration ===
 // =====================
-typedef struct{
+typedef struct mpu_conf{
 	mpu_addr_t addr; // Device Address
 	struct{ int32_t x, y, z; } offset_gyro, offset_accel;
 
@@ -61,11 +61,10 @@ static uint8_t gc_mpu[14] = {0};
 /** @brief Active device pointer used by all standalone functions.
  *  Set via @ref mpu_init or @ref mpu_use_struct. */
  mpu_s *g_mpu = NULL;
+ mpu_conf_t g_mpu_conf = {0};
 
 /** @brief Cache for the last I2C operation return value (byte count or error). */
 static int g_mpu_ret_cache = 0;
-
-static mpu_conf_t g_mpu_cfg;
 
 static _i2c_hw_config g_i2c;
 
@@ -83,10 +82,10 @@ static _i2c_hw_config g_i2c;
  * @warning Ensure @ref MPU_SDA_PIN and @ref MPU_SCL_PIN are defined in your config.
  */
 mpu_s mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr){
-	memset(&g_mpu_cfg, 0, sizeof(g_mpu_cfg));
-
+	memset(&g_mpu_conf, 0, sizeof(g_mpu_conf));
 	mpu_s mpu; // Initalize device struct and function pointers
 	memset(&mpu, 0, sizeof(mpu));
+	mpu.conf = &g_mpu_conf;
 
 	if(!i2c_hw){
 		g_i2c.hw = i2c1_hw;
@@ -94,12 +93,12 @@ mpu_s mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr){
 	}else g_i2c.hw = i2c_hw;
 
 	if(!addr){
-		g_mpu_cfg.addr = MPU_ADDR_AD0_GND;
+		mpu.conf->addr = MPU_ADDR_AD0_GND;
 		LOG_W("invalid addr = 0x%02X, fallback=0x%02X", addr, MPU_ADDR_AD0_GND);
-	}else g_mpu_cfg.addr = addr;
+	}else mpu.conf->addr = addr;
 
-	g_mpu_cfg.fsr_div.accel = 16384.0f;
-	g_mpu_cfg.fsr_div.gyro = 131.0f;
+	mpu.conf->fsr_div.accel = 16384.0f;
+	mpu.conf->fsr_div.gyro = 131.0f;
 	g_mpu = &mpu;
 
 	g_i2c.scl_pin = MPU_SCL_PIN;
@@ -180,7 +179,7 @@ bool _mpu_write_reg(uint8_t *data, uint8_t how_many, bool nostop){
 		LOG_I("use mpu_use_struct() to set g_mpu");
 		return false;
 	}
-	g_mpu_ret_cache = _i2c_write_buffer(&g_i2c, g_mpu_cfg.addr, data, how_many, nostop);
+	g_mpu_ret_cache = _i2c_write_buffer(&g_i2c, g_mpu->conf->addr, data, how_many, nostop);
 	if(g_mpu_ret_cache){
 		LOG_D("register write ok reg=0x%02X len=%u", data[0], how_many);
 	}else{
@@ -216,7 +215,7 @@ bool _mpu_read_reg(uint8_t reg, uint8_t *out, uint8_t how_many){
 		LOG_E("register write failed reg=0x%02X", reg);
 		return false;
 	}
-	g_mpu_ret_cache = _i2c_read_buffer(&g_i2c, g_mpu_cfg.addr, out, how_many);
+	g_mpu_ret_cache = _i2c_read_buffer(&g_i2c, g_mpu->conf->addr, out, how_many);
 	if(g_mpu_ret_cache){
 		LOG_D("register read ok reg=0x%02X len=%u", reg, how_many);
 		return true;
@@ -638,8 +637,8 @@ bool mpu_fsr(mpu_fsr_t fsr, mpu_afsr_t afsr){
 
 	// Automatic scaling calculation:
 	// 131 / 2^bits → sensitivity in °/s
-	g_mpu_cfg.fsr_div.gyro = 131.0f / (1 << ((fsr >> 3) & 0x03));
-	LOG_I("gyro fsr_div set value=%.3f", g_mpu_cfg.fsr_div.gyro);
+	g_mpu->conf->fsr_div.gyro = 131.0f / (1 << ((fsr >> 3) & 0x03));
+	LOG_I("gyro fsr_div set value=%.3f", g_mpu->conf->fsr_div.gyro);
 
 	// Accel FSR bits
 	gc_mpu[1] &= ~MPU_AFSR_16G;
@@ -647,8 +646,8 @@ bool mpu_fsr(mpu_fsr_t fsr, mpu_afsr_t afsr){
 	LOG_I("accel fsr prepared value=0x%02X", afsr);
 
 	// Automatic scaling calculation (raw / divider = G)
-	g_mpu_cfg.fsr_div.accel = 16384.0f / (1 << ((afsr >> 3) & 0x03));
-	LOG_I("accel afsr_div set value=%.3f", g_mpu_cfg.fsr_div.accel);
+	g_mpu->conf->fsr_div.accel = 16384.0f / (1 << ((afsr >> 3) & 0x03));
+	LOG_I("accel afsr_div set value=%.3f", g_mpu->conf->fsr_div.accel);
 
 	// Write back to registers
 	if(!_mpu_write_reg((uint8_t[]){MPU_REG_GYRO_CONFIG, gc_mpu[0], gc_mpu[1]}, 3, false)){
@@ -712,18 +711,18 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
 			sleep_ms(5); // small delay between measurements
 		}
 
-		g_mpu_cfg.offset_gyro.x = sum_x / samples; // Store x axis average as offset_gyro.x
-		g_mpu_cfg.offset_gyro.y = sum_y / samples; // Store y axis average as offset_gyro.y
-		g_mpu_cfg.offset_gyro.z = sum_z / samples; // Store z axis average as offset_gyro.z
+		g_mpu->conf->offset_gyro.x = sum_x / samples; // Store x axis average as offset_gyro.x
+		g_mpu->conf->offset_gyro.y = sum_y / samples; // Store y axis average as offset_gyro.y
+		g_mpu->conf->offset_gyro.z = sum_z / samples; // Store z axis average as offset_gyro.z
 
 		LOG_I("gyro calibration done");
 		LOG_D("gyro offset x=%d y=%d z=%d", g_mpu_cfg.offset_gyro.x, g_mpu_cfg.offset_gyro.y, g_mpu_cfg.offset_gyro.z);
 
 	}
 	if (mask & MPU_ACCEL){ // Checks if accelerometer should be calibrated
-		g_mpu_cfg.offset_accel.x = 0;
-		g_mpu_cfg.offset_accel.y = 0;
-		g_mpu_cfg.offset_accel.z = 0;
+		g_mpu->conf->offset_accel.x = 0;
+		g_mpu->conf->offset_accel.y = 0;
+		g_mpu->conf->offset_accel.z = 0;
 
 		sum_x = 0; sum_y = 0; sum_z = 0; // Set sum back to `0` in case both sensors got read
 		LOG_I("accel calibration started");
@@ -744,34 +743,34 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
 			sleep_ms(5); // small delay between measurements
 		}
 
-		g_mpu_cfg.offset_accel.x = sum_x / samples; // Store x axis average as offset_accel.x
-		g_mpu_cfg.offset_accel.y = sum_y / samples; // Store y axis average as offset_accel.y
-		g_mpu_cfg.offset_accel.z = sum_z / samples; // Store z axis average as offset_accel.z
+		g_mpu->conf->offset_accel.x = sum_x / samples; // Store x axis average as offset_accel.x
+		g_mpu->conf->offset_accel.y = sum_y / samples; // Store y axis average as offset_accel.y
+		g_mpu->conf->offset_accel.z = sum_z / samples; // Store z axis average as offset_accel.z
 
-		int32_t one_g = (int32_t)g_mpu_cfg.fsr_div.accel;
+		int32_t one_g = (int32_t)g_mpu->conf->fsr_div.accel;
 		if((sensor & MPU_ACCEL_X) == MPU_ACCEL_X){
-			if(g_mpu_cfg.offset_accel.x > 0)
-				g_mpu_cfg.offset_accel.x -= one_g;
+			if(g_mpu->conf->offset_accel.x > 0)
+				g_mpu->conf->offset_accel.x -= one_g;
 			else
-				g_mpu_cfg.offset_accel.x += one_g;
+				g_mpu->conf->offset_accel.x += one_g;
 		}
 
 		if((sensor & MPU_ACCEL_Y) == MPU_ACCEL_Y){
-			if(g_mpu_cfg.offset_accel.y > 0)
-				g_mpu_cfg.offset_accel.y -= one_g;
+			if(g_mpu->conf->offset_accel.y > 0)
+				g_mpu->conf->offset_accel.y -= one_g;
 			else
-				g_mpu_cfg.offset_accel.y += one_g;
+				g_mpu->conf->offset_accel.y += one_g;
 		}
 
 		if((sensor & MPU_ACCEL_Z) == MPU_ACCEL_Z){
-			if(g_mpu_cfg.offset_accel.z > 0)
-				g_mpu_cfg.offset_accel.z -= one_g;
+			if(g_mpu->conf->offset_accel.z > 0)
+				g_mpu->conf->offset_accel.z -= one_g;
 			else
-				g_mpu_cfg.offset_accel.z += one_g;
+				g_mpu->conf->offset_accel.z += one_g;
 		}
 
 		LOG_I("accel calibration done");
-		LOG_D("accel offset x=%d y=%d z=%d", g_mpu_cfg.offset_accel.x, g_mpu_cfg.offset_accel.y, g_mpu_cfg.offset_accel.z);
+		LOG_D("accel offset x=%d y=%d z=%d", g_mpu->conf->offset_accel.x, g_mpu->conf->offset_accel.y, g_mpu->conf->offset_accel.z);
 	}
 
 	return true; // If everything goes right
@@ -864,9 +863,9 @@ bool mpu_read_sensor(mpu_sensor_t sensor){
 
 	if(sensor & MPU_SCALED){ // Optional: scale raw values
 		if(mask & MPU_ACCEL){ // Raw -> G for accelerometer
-			g_mpu->v.accel.g.x = (g_mpu->v.accel.raw.x - g_mpu_cfg.offset_accel.x) / g_mpu_cfg.fsr_div.accel; // Calculate raw x axis to G
-			g_mpu->v.accel.g.y = (g_mpu->v.accel.raw.y - g_mpu_cfg.offset_accel.y) / g_mpu_cfg.fsr_div.accel; // Calculate raw y axis to G
-			g_mpu->v.accel.g.z = (g_mpu->v.accel.raw.z - g_mpu_cfg.offset_accel.z) / g_mpu_cfg.fsr_div.accel; // Calculate raw z axis to G
+			g_mpu->v.accel.g.x = (g_mpu->v.accel.raw.x - g_mpu->conf->offset_accel.x) / g_mpu->conf->fsr_div.accel; // Calculate raw x axis to G
+			g_mpu->v.accel.g.y = (g_mpu->v.accel.raw.y - g_mpu->conf->offset_accel.y) / g_mpu->conf->fsr_div.accel; // Calculate raw y axis to G
+			g_mpu->v.accel.g.z = (g_mpu->v.accel.raw.z - g_mpu->conf->offset_accel.z) / g_mpu->conf->fsr_div.accel; // Calculate raw z axis to G
 
 			LOG_D("scaled accel x=%0.3fg y=%0.3fg z=%0.3fg",
 					g_mpu->v.accel.g.x, g_mpu->v.accel.g.y, g_mpu->v.accel.g.z);
@@ -878,9 +877,9 @@ bool mpu_read_sensor(mpu_sensor_t sensor){
 		}
 
 		if(mask & MPU_GYRO){ // Raw -> °/s for gyroscope
-			g_mpu->v.gyro.dps.x = (g_mpu->v.gyro.raw.x - g_mpu_cfg.offset_gyro.x) / g_mpu_cfg.fsr_div.gyro; // Calculate raw x axis to °/s
-			g_mpu->v.gyro.dps.y = (g_mpu->v.gyro.raw.y - g_mpu_cfg.offset_gyro.y) / g_mpu_cfg.fsr_div.gyro; // Calculate raw y axis to °/s
-			g_mpu->v.gyro.dps.z = (g_mpu->v.gyro.raw.z - g_mpu_cfg.offset_gyro.z) / g_mpu_cfg.fsr_div.gyro; // Calculate raw z axis to °/s
+			g_mpu->v.gyro.dps.x = (g_mpu->v.gyro.raw.x - g_mpu->conf->offset_gyro.x) / g_mpu->conf->fsr_div.gyro; // Calculate raw x axis to °/s
+			g_mpu->v.gyro.dps.y = (g_mpu->v.gyro.raw.y - g_mpu->conf->offset_gyro.y) / g_mpu->conf->fsr_div.gyro; // Calculate raw y axis to °/s
+			g_mpu->v.gyro.dps.z = (g_mpu->v.gyro.raw.z - g_mpu->conf->offset_gyro.z) / g_mpu->conf->fsr_div.gyro; // Calculate raw z axis to °/s
 
 			LOG_D("scaled gyro x=%0.3f°/s y=%0.3f°/s z=%0.3f°/s",
 					g_mpu->v.gyro.dps.x, g_mpu->v.gyro.dps.y, g_mpu->v.gyro.dps.z);
@@ -956,7 +955,7 @@ bool mpu_int_pin_cfg(mpu_int_pin_cfg_t cfg){
  */
 bool mpu_int_motion_cfg(uint8_t ms, uint16_t mg){
 	if(ms < 1)         ms = 1;   // Check if argument `ms` are to small
-	else if (ms > 255) ms = 255; // or to big and set it to min/max
+	else if (ms > 254) ms = 255; // or to big and set it to min/max
 
 	if(mg < 32)        mg = 1;   // Check if `mg` is to small
 	else if(mg > 8160) mg = 255; // or to big and set to min/max

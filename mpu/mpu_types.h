@@ -166,6 +166,7 @@ typedef union {
 // =====================
 // === Data Structur ===
 // =====================
+typedef struct mpu_conf mpu_conf_t;
 
 /**
  * @brief Main MPU device state structure.
@@ -204,6 +205,7 @@ typedef struct mpu_s{
 		} temp;
 	} v; /**< Latest sampled sensor values. */
 
+	mpu_conf_t *conf;
 } mpu_s;
 
 #endif
