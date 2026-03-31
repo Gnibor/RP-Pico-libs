@@ -114,55 +114,6 @@ typedef enum {
     MPU_RESET_DEVICE   = (1 << 7)  /**< Trigger a full device reset. */
 } mpu_reset_t;
 
-/**
- * @brief Raw 3-axis sensor vector.
- *
- * @details
- * Stores signed 16-bit X, Y, and Z axis values exactly as used for raw sensor
- * data handling.
- */
-typedef struct {
-	int16_t x; /**< Raw X-axis value. */
-	int16_t y; /**< Raw Y-axis value. */
-	int16_t z; /**< Raw Z-axis value. */
-} mpu_vec3_raw_t;
-
-/**
- * @brief Raw 14-byte MPU sensor frame used for burst reads.
- *
- * @details
- * This union provides:
- * - direct raw byte access through @ref raw
- * - structured field access through @ref accel, @ref temp, and @ref gyro
- *
- * Burst-read layout as provided by the MPU:
- * - bytes 0..1   : ACCEL_XOUT
- * - bytes 2..3   : ACCEL_YOUT
- * - bytes 4..5   : ACCEL_ZOUT
- * - bytes 6..7   : TEMP_OUT
- * - bytes 8..9   : GYRO_XOUT
- * - bytes 10..11 : GYRO_YOUT
- * - bytes 12..13 : GYRO_ZOUT
- *
- * @note
- * MPU multi-byte output registers are stored in big-endian byte order.
- *
- * @warning
- * On little-endian systems, 16-bit values must be byte-swapped before direct
- * arithmetic use when overlaid from the raw byte buffer.
- */
-typedef union {
-
-	uint8_t raw[14]; /**< Raw 14-byte burst-read buffer. */
-
-	struct __attribute__((packed)){
-		mpu_vec3_raw_t accel; /**< Raw accelerometer output triplet. */
-		int16_t        temp;  /**< Raw temperature output value. */
-		mpu_vec3_raw_t gyro;  /**< Raw gyroscope output triplet. */
-	};
-
-} mpu_frame_t;
-
 // =====================
 // === Data Structur ===
 // =====================

@@ -149,6 +149,7 @@ typedef enum {
 #define MPU_REG_FF_THR             0x1D /**< Free-fall threshold */
 #define MPU_REG_FF_DUR             0x1E /**< Free-fall duration */
 
+#define MPU6500_REG_WOM_THR        0x1F  /**< Wake-on-motion threshold register */
 #define MPU_REG_MOT_THR            0x1F /**< Motion detection threshold */
 #define MPU_REG_MOT_DUR            0x20 /**< Motion detection duration */
 #define MPU_REG_ZRMOT_THR          0x21 /**< Zero-motion detection threshold */
@@ -324,6 +325,12 @@ typedef enum {
     MOT_DELAY_2MS     = (2 << 4), /**< 2ms power-on delay. */
     MOT_DELAY_3MS     = (3 << 4)  /**< 3ms power-on delay. */
 } mpu_mot_delay_t;
+
+/* --- MPU-6500 / 9250 / 9255 Motion / Wake-On-Motion --- */
+#define MPU6500_REG_ACCEL_INTEL_CTRL  0x69  /**< Accel intelligence / hardware WOM control */
+
+#define MPU6500_ACCEL_INTEL_EN        (1 << 7) /**< Enable accel hardware intelligence */
+#define MPU6500_ACCEL_INTEL_MODE      (1 << 6) /**< Compare current sample to previous sample */
 
 /* --- User Control Register --- */
 #define MPU_REG_USER_CTRL          0x6A /**< Main user-facing control register */

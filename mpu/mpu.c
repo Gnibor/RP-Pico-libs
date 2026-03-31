@@ -31,6 +31,7 @@
 #include "i2c.h"
 #include "byte_cache.h"
 #include "byte_ops.h"
+#include "mpu_types.h"
 
 // ===============
 // === Structs ===
@@ -71,7 +72,7 @@ bool _mpu_write_reg(uint8_t *data, uint8_t how_many, bool nostop);
 bool _mpu_read_reg(uint8_t reg, uint8_t *out, uint8_t how_many);
 
 // helper function
-static inline uint16_t mpu_be16(const uint8_t *b, uint8_t i){
+static inline uint16_t be16_idx(const uint8_t *b, uint8_t i){
 	return ((uint16_t)b[i] << 8) | b[i+1];
 }
 
@@ -599,46 +600,148 @@ bool mpu_ahpf(mpu_ahpf_t ahpf){
  *       sensor and puts all gyroscope axes into standby.
  */
 bool mpu_cycle_mode(mpu_cycle_t mode, mpu_lp_wake_t wake_up_rate){
-	// Read current power management registers (PWR_MGMT_1 and PWR_MGMT_2)
+	// Read current PWR_MGMT_1 and PWR_MGMT_2
 	gcs_mpu.tx.head = MPU_REG_PWR_MGMT_1;
 	if(!_mpu_read_reg(gcs_mpu.tx.head, gcs_mpu.tx.data, 2)){
 		LOG_E("register read failed reg=0x%02X len=2", gcs_mpu.tx.head);
 		return false;
 	}
 
-	// Enable or disable cycle mode
+	// Backup cached register values
+	gcs_mpu.tx.data[2] = gcs_mpu.tx.data[0]; // backup PWR_MGMT_1
+	gcs_mpu.tx.data[3] = gcs_mpu.tx.data[1]; // backup PWR_MGMT_2
+
+	bool is_modern =
+		(g_mpu->conf->who_am_i == MPU6500_WHO_AM_I) ||
+		(g_mpu->conf->who_am_i == MPU9250_WHO_AM_I) ||
+		(g_mpu->conf->who_am_i == MPU9255_WHO_AM_I);
+
+	bool wake_is_modern = ((wake_up_rate & 0x100) == 0x100);
+
 	if(mode == MPU_CYCLE_ON || mode == MPU_CYCLE_LP){
-		gcs_mpu.tx.data[0] |= MPU_CYCLE; // Activate CYCLE (set to 1)
-		gcs_mpu.tx.data[0] &= ~MPU_SLEEP; // Deactivate SLEEP (set to 0)
-
-		gcs_mpu.tx.data[1] &= ~MPU_LP_WAKE_40HZ; // Clear previous wake-up frequency bits
-		gcs_mpu.tx.data[1] |= wake_up_rate; // Set new wake-up frequency
-		if(mode == MPU_CYCLE_LP){
-			gcs_mpu.tx.data[0] |= MPU_TEMP_DIS; // Deactivate Temperature sensor (set to 1)
-
-			gcs_mpu.tx.data[1] |= MPU_STBY_GYRO; // Keep gyro in standby during LP cycle
-
-			LOG_I("low power cycle mode started");
+		// Validate wake-rate family against device family
+		if(is_modern && !wake_is_modern){
+			LOG_E("invalid wake_up_rate=0x%04X for who_am_i=0x%02X",
+				wake_up_rate, g_mpu->conf->who_am_i);
+			return false;
 		}
-		LOG_I("cycle mode started");
+		if(!is_modern && wake_is_modern){
+			LOG_E("invalid wake_up_rate=0x%04X for who_am_i=0x%02X",
+				wake_up_rate, g_mpu->conf->who_am_i);
+			return false;
+		}
+
+		// ==========================================
+		// Step 1: prepare PWR_MGMT_1 without CYCLE
+		// ==========================================
+		gcs_mpu.tx.data[2] &= ~MPU_SLEEP;
+		gcs_mpu.tx.data[2] &= ~MPU_CYCLE;
+		gcs_mpu.tx.data[2] &= ~MPU_CLK_STOP;
+		gcs_mpu.tx.data[2] &= ~MPU_TEMP_DIS; // default: temp on
+
+		if(mode == MPU_CYCLE_LP){
+			gcs_mpu.tx.data[2] |= MPU_TEMP_DIS;
+			gcs_mpu.tx.data[2] |= MPU_CLK_INTERNAL;
+		}else{
+			gcs_mpu.tx.data[2] |= MPU_CLK_XGYRO;
+		}
+
+		gcs_mpu.raw[0] = MPU_REG_PWR_MGMT_1;
+		gcs_mpu.raw[1] = gcs_mpu.tx.data[2];
+		if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+			LOG_E("register write failed reg=0x%02X value=0x%02X",
+				MPU_REG_PWR_MGMT_1, gcs_mpu.tx.data[2]);
+			return false;
+		}
+		sleep_ms(1);
+
+		// ======================================
+		// Step 2: configure wake behavior
+		// ======================================
+		if(is_modern){
+			if(mode == MPU_CYCLE_LP)
+				gcs_mpu.tx.data[3] |= MPU_STBY_GYRO;
+			else
+				gcs_mpu.tx.data[3] &= ~MPU_STBY_GYRO;
+
+			gcs_mpu.raw[0] = MPU_REG_PWR_MGMT_2;
+			gcs_mpu.raw[1] = gcs_mpu.tx.data[3];
+			if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+				LOG_E("register write failed reg=0x%02X value=0x%02X",
+					MPU_REG_PWR_MGMT_2, gcs_mpu.tx.data[3]);
+				return false;
+			}
+			sleep_ms(1);
+
+			gcs_mpu.raw[0] = MPU6500_REG_LP_ACCEL_ODR;
+			gcs_mpu.raw[1] = (uint8_t)(wake_up_rate & 0x0F);
+			if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+				LOG_E("register write failed reg=0x%02X value=0x%02X",
+					MPU6500_REG_LP_ACCEL_ODR, gcs_mpu.raw[1]);
+				return false;
+			}
+			sleep_ms(1);
+		}else{
+			gcs_mpu.tx.data[3] &= ~MPU_LP_WAKE_40HZ;
+			gcs_mpu.tx.data[3] |= (uint8_t)wake_up_rate;
+
+			if(mode == MPU_CYCLE_LP)
+				gcs_mpu.tx.data[3] |= MPU_STBY_GYRO;
+			else
+				gcs_mpu.tx.data[3] &= ~MPU_STBY_GYRO;
+
+			gcs_mpu.raw[0] = MPU_REG_PWR_MGMT_2;
+			gcs_mpu.raw[1] = gcs_mpu.tx.data[3];
+			if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+				LOG_E("register write failed reg=0x%02X value=0x%02X",
+					MPU_REG_PWR_MGMT_2, gcs_mpu.tx.data[3]);
+				return false;
+			}
+			sleep_ms(1);
+		}
+
+		// ======================================
+		// Step 3: enable CYCLE last
+		// ======================================
+		gcs_mpu.tx.data[2] |= MPU_CYCLE;
+
+		gcs_mpu.raw[0] = MPU_REG_PWR_MGMT_1;
+		gcs_mpu.raw[1] = gcs_mpu.tx.data[2];
+		if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+			LOG_E("register write failed reg=0x%02X value=0x%02X",
+				MPU_REG_PWR_MGMT_1, gcs_mpu.tx.data[2]);
+			return false;
+		}
+		sleep_ms(3);
+
+		if(mode == MPU_CYCLE_LP)
+			LOG_I("low power cycle mode started who_am_i=0x%02X", g_mpu->conf->who_am_i);
+		else
+			LOG_I("cycle mode started who_am_i=0x%02X", g_mpu->conf->who_am_i);
 	}else{
 		LOG_I("cycle mode deactivation started");
-		gcs_mpu.tx.data[0] &= ~MPU_CYCLE;  // Clear CYCLE bit
-		gcs_mpu.tx.data[0] &= ~MPU_TEMP_DIS; // Reactivate temp if it was in standby
 
-		gcs_mpu.tx.data[1] &= ~MPU_LP_WAKE_40HZ; // Clear LP wake frequency bits
-		gcs_mpu.tx.data[1] &= ~MPU_STBY_GYRO; // Reactivate gyro if it was in standby
+		gcs_mpu.tx.data[2] &= ~MPU_CYCLE;
+		gcs_mpu.tx.data[2] &= ~MPU_TEMP_DIS;
+		gcs_mpu.tx.data[3] &= ~MPU_STBY_GYRO;
+
+		if(!is_modern)
+			gcs_mpu.tx.data[3] &= ~MPU_LP_WAKE_40HZ;
+
+		gcs_mpu.tx.head    = MPU_REG_PWR_MGMT_1;
+		gcs_mpu.tx.data[0] = gcs_mpu.tx.data[2];
+		gcs_mpu.tx.data[1] = gcs_mpu.tx.data[3];
+
+		if(!_mpu_write_reg(gcs_mpu.raw, 3, false)){
+			LOG_E("register write failed reg=0x%02X values=0x%02X,0x%02X",
+				gcs_mpu.tx.head, gcs_mpu.tx.data[0], gcs_mpu.tx.data[1]);
+			return false;
+		}
+		sleep_ms(2);
 	}
 
-	// Write back updated registers
-	if(!_mpu_write_reg(gcs_mpu.raw, 3, false)){
-		LOG_E("register write failed reg=0x%02X values=0x%02X,0x%02X", gcs_mpu.tx.head, gcs_mpu.tx.data[0], gcs_mpu.tx.data[1]);
-		return false;
-	}
-
-	sleep_ms(10); // Activation pause
-
-	LOG_I("cycle mode applied reg=0x%02X values=0x%02X,0x%02X", gcs_mpu.tx.head, gcs_mpu.tx.data[0], gcs_mpu.tx.data[1]);
+	LOG_I("cycle mode applied who_am_i=0x%02X pwr_mgmt_1=0x%02X pwr_mgmt_2=0x%02X",
+		g_mpu->conf->who_am_i, gcs_mpu.tx.data[2], gcs_mpu.tx.data[3]);
 
 	return true;
 }
@@ -737,9 +840,9 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
 				return false;
 			}
 
-			g_mpu->v.gyro.raw.x = mpu_be16(gcs_mpu.raw, 0); // Store x axis output in gyro.raw.x
-			g_mpu->v.gyro.raw.y = mpu_be16(gcs_mpu.raw, 2); // Store y axis output in gyro.raw.y
-			g_mpu->v.gyro.raw.z = mpu_be16(gcs_mpu.raw, 4); // Store z axis output in gyro.raw.z
+			g_mpu->v.gyro.raw.x = be16_idx(gcs_mpu.raw, 0); // Store x axis output in gyro.raw.x
+			g_mpu->v.gyro.raw.y = be16_idx(gcs_mpu.raw, 2); // Store y axis output in gyro.raw.y
+			g_mpu->v.gyro.raw.z = be16_idx(gcs_mpu.raw, 4); // Store z axis output in gyro.raw.z
 
 			sum_x += g_mpu->v.gyro.raw.x; // Add x axis output to sum_x
 			sum_y += g_mpu->v.gyro.raw.y; // Add y axis output to sum_y
@@ -769,9 +872,9 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
 				return false;
 			}
 
-			g_mpu->v.accel.raw.x = mpu_be16(gcs_mpu.raw, 0); // Store x axis output in accel.raw.x
-			g_mpu->v.accel.raw.y = mpu_be16(gcs_mpu.raw, 2); // Store y axis output in accel.raw.y
-			g_mpu->v.accel.raw.z = mpu_be16(gcs_mpu.raw, 4); // Store z axis output in accel.raw.z
+			g_mpu->v.accel.raw.x = be16_idx(gcs_mpu.raw, 0); // Store x axis output in accel.raw.x
+			g_mpu->v.accel.raw.y = be16_idx(gcs_mpu.raw, 2); // Store y axis output in accel.raw.y
+			g_mpu->v.accel.raw.z = be16_idx(gcs_mpu.raw, 4); // Store z axis output in accel.raw.z
 
 			sum_x += g_mpu->v.accel.raw.x; // Add x axis output to sum_x
 			sum_y += g_mpu->v.accel.raw.y; // Add y axis output to sum_y
@@ -847,13 +950,13 @@ bool mpu_read(mpu_sensor_t sensor){
 			return false;
 		}
 
-		g_mpu->v.accel.raw.x = mpu_be16(gcs_mpu.raw, 0) - g_mpu->conf->offset_accel.x; // Save raw accelerometer x axis
-		g_mpu->v.accel.raw.y = mpu_be16(gcs_mpu.raw, 2) - g_mpu->conf->offset_accel.y; // Save raw accelerometer y axis
-		g_mpu->v.accel.raw.z = mpu_be16(gcs_mpu.raw, 4) - g_mpu->conf->offset_accel.z; // Save raw accelerometer z axis
-		g_mpu->v.temp.raw =    mpu_be16(gcs_mpu.raw, 6); // Save raw temperatur
-		g_mpu->v.gyro.raw.x =  mpu_be16(gcs_mpu.raw, 8) - g_mpu->conf->offset_gyro.x; // Save raw gyro x axis
-		g_mpu->v.gyro.raw.y =  mpu_be16(gcs_mpu.raw, 10) - g_mpu->conf->offset_gyro.y; // Save raw gyro y axis ;
-		g_mpu->v.gyro.raw.z =  mpu_be16(gcs_mpu.raw, 12) - g_mpu->conf->offset_gyro.z; // Save raw gyro z axis ;
+		g_mpu->v.accel.raw.x = be16_idx(gcs_mpu.raw, 0) - g_mpu->conf->offset_accel.x; // Save raw accelerometer x axis
+		g_mpu->v.accel.raw.y = be16_idx(gcs_mpu.raw, 2) - g_mpu->conf->offset_accel.y; // Save raw accelerometer y axis
+		g_mpu->v.accel.raw.z = be16_idx(gcs_mpu.raw, 4) - g_mpu->conf->offset_accel.z; // Save raw accelerometer z axis
+		g_mpu->v.temp.raw =    be16_idx(gcs_mpu.raw, 6); // Save raw temperatur
+		g_mpu->v.gyro.raw.x =  be16_idx(gcs_mpu.raw, 8) - g_mpu->conf->offset_gyro.x; // Save raw gyro x axis
+		g_mpu->v.gyro.raw.y =  be16_idx(gcs_mpu.raw, 10) - g_mpu->conf->offset_gyro.y; // Save raw gyro y axis ;
+		g_mpu->v.gyro.raw.z =  be16_idx(gcs_mpu.raw, 12) - g_mpu->conf->offset_gyro.z; // Save raw gyro z axis ;
 
 		LOG_D("raw burst accel_x=%d accel_y=%d accel_z=%d temp=%d gyro_x=%d gyro_y=%d gyro_z=%d",
 				g_mpu->v.accel.raw.x, g_mpu->v.accel.raw.y, g_mpu->v.accel.raw.z,
@@ -866,12 +969,11 @@ bool mpu_read(mpu_sensor_t sensor){
 				return false;
 			}
 
-			g_mpu->v.accel.raw.x = mpu_be16(gcs_mpu.raw, 0) - g_mpu->conf->offset_accel.x; // Save raw accelerometer x axis
-			g_mpu->v.accel.raw.y = mpu_be16(gcs_mpu.raw, 2) - g_mpu->conf->offset_accel.y; // Save raw accelerometer y axis
-			g_mpu->v.accel.raw.z = mpu_be16(gcs_mpu.raw, 4) - g_mpu->conf->offset_accel.z; // Save raw accelerometer z axis
+			g_mpu->v.accel.raw.x = be16_idx(gcs_mpu.raw, 0) - g_mpu->conf->offset_accel.x; // Save raw accelerometer x axis
+			g_mpu->v.accel.raw.y = be16_idx(gcs_mpu.raw, 2) - g_mpu->conf->offset_accel.y; // Save raw accelerometer y axis
+			g_mpu->v.accel.raw.z = be16_idx(gcs_mpu.raw, 4) - g_mpu->conf->offset_accel.z; // Save raw accelerometer z axis
 
-			LOG_D("raw accel x=%d y=%d z=%d",
-					g_mpu->v.accel.raw.x, g_mpu->v.accel.raw.y, g_mpu->v.accel.raw.z);
+			LOG_D("raw accel x=%d y=%d z=%d", g_mpu->v.accel.raw.x, g_mpu->v.accel.raw.y, g_mpu->v.accel.raw.z);
 		}
 		if(mask & MPU_TEMP){ // Only temperatur
 			if(!_mpu_read_reg(MPU_REG_TEMP_OUT_H, gcs_mpu.raw, 2)){ // Reads temperatur output register
@@ -889,12 +991,11 @@ bool mpu_read(mpu_sensor_t sensor){
 				return false;
 			}
 
-			g_mpu->v.gyro.raw.x = mpu_be16(gcs_mpu.raw, 0) - g_mpu->conf->offset_gyro.x; // Save raw gyro x axis
-			g_mpu->v.gyro.raw.y = mpu_be16(gcs_mpu.raw, 2) - g_mpu->conf->offset_gyro.y; // Save raw gyro y axis
-			g_mpu->v.gyro.raw.z = mpu_be16(gcs_mpu.raw, 4) - g_mpu->conf->offset_gyro.z; // Save raw gyro z axis
+			g_mpu->v.gyro.raw.x = be16_idx(gcs_mpu.raw, 0) - g_mpu->conf->offset_gyro.x; // Save raw gyro x axis
+			g_mpu->v.gyro.raw.y = be16_idx(gcs_mpu.raw, 2) - g_mpu->conf->offset_gyro.y; // Save raw gyro y axis
+			g_mpu->v.gyro.raw.z = be16_idx(gcs_mpu.raw, 4) - g_mpu->conf->offset_gyro.z; // Save raw gyro z axis
 
-			LOG_D("raw gyro x=%d y=%d z=%d",
-					g_mpu->v.gyro.raw.x, g_mpu->v.gyro.raw.y, g_mpu->v.gyro.raw.z);
+			LOG_D("raw gyro x=%d y=%d z=%d", g_mpu->v.gyro.raw.x, g_mpu->v.gyro.raw.y, g_mpu->v.gyro.raw.z);
 		}
 	}
 
@@ -904,8 +1005,7 @@ bool mpu_read(mpu_sensor_t sensor){
 			g_mpu->v.accel.g.y = g_mpu->v.accel.raw.y / g_mpu->conf->fsr_div.accel; // Calculate raw y axis to G
 			g_mpu->v.accel.g.z = g_mpu->v.accel.raw.z / g_mpu->conf->fsr_div.accel; // Calculate raw z axis to G
 
-			LOG_D("scaled accel x=%0.3fg y=%0.3fg z=%0.3fg",
-					g_mpu->v.accel.g.x, g_mpu->v.accel.g.y, g_mpu->v.accel.g.z);
+			LOG_D("scaled accel x=%0.3fg y=%0.3fg z=%0.3fg", g_mpu->v.accel.g.x, g_mpu->v.accel.g.y, g_mpu->v.accel.g.z);
 		}
 		if(mask & MPU_TEMP){ // Raw -> °C
 			g_mpu->v.temp.celsius = (g_mpu->v.temp.raw / 340.0f) + 36.53f; // Calculate raw temperatur to °C
@@ -918,8 +1018,7 @@ bool mpu_read(mpu_sensor_t sensor){
 			g_mpu->v.gyro.dps.y = g_mpu->v.gyro.raw.y / g_mpu->conf->fsr_div.gyro; // Calculate raw y axis to °/s
 			g_mpu->v.gyro.dps.z = g_mpu->v.gyro.raw.z / g_mpu->conf->fsr_div.gyro; // Calculate raw z axis to °/s
 
-			LOG_D("scaled gyro x=%0.3f°/s y=%0.3f°/s z=%0.3f°/s",
-					g_mpu->v.gyro.dps.x, g_mpu->v.gyro.dps.y, g_mpu->v.gyro.dps.z);
+			LOG_D("scaled gyro x=%0.3f°/s y=%0.3f°/s z=%0.3f°/s", g_mpu->v.gyro.dps.x, g_mpu->v.gyro.dps.y, g_mpu->v.gyro.dps.z);
 		}
 	}
 
@@ -992,31 +1091,101 @@ bool mpu_int_pin_cfg(mpu_int_pin_cfg_t cfg){
  *       to filter out constant gravity and detect only movement.
  */
 bool mpu_int_motion_cfg(uint8_t ms, uint16_t mg){
-	if(ms < 1)         ms = 1;   // Check if argument `ms` are to small
-	else if (ms > 254) ms = 255; // or to big and set it to min/max
-
-	if(mg < 32)        mg = 1;   // Check if `mg` is to small
-	else if(mg > 8160) mg = 255; // or to big and set to min/max
-	else               mg /= 32; // else divide by 32 for the mpu
-
-	if(!mpu_ahpf(MPU_AHPF_5HZ)){ // Set the accel high pass filter to 5Hz
-		LOG_E("ahpf config failed value=0x%02X", MPU_AHPF_5HZ);
+	if(!g_mpu){
+		LOG_E("g_mpu = NULL");
+		LOG_I("use mpu_use_struct() to set g_mpu");
 		return false;
 	}
 
-	gcs_mpu.tx.head = MPU_REG_MOT_THR;
-	gcs_mpu.tx.data[0] = mg;
-	gcs_mpu.tx.data[1] = ms;
-	if(!_mpu_write_reg(gcs_mpu.raw, 3, false)){ // Write the motion threashold to the given arguments
-		LOG_E("register write failed reg=0x%02X values=0x%02X,0x%02X", gcs_mpu.tx.head, mg, ms);
-		return false;
+	switch(g_mpu->conf->who_am_i){
+		// =====================================================
+		// MPU-6000 / MPU-6050
+		// Classic motion threshold + duration + accel HPF
+		// =====================================================
+		case MPU60X0_WHO_AM_I:
+			if(ms < 1)         ms = 1;
+			else if(ms > 254)  ms = 255;
+
+			if(mg < 32)        mg = 1;
+			else if(mg > 8160) mg = 255;
+			else               mg /= 32;  // 1 LSB = 32 mg
+
+			if(!mpu_ahpf(MPU_AHPF_5HZ)){
+				LOG_E("ahpf config failed value=0x%02X", MPU_AHPF_5HZ);
+				return false;
+			}
+
+			gcs_mpu.tx.head    = MPU_REG_MOT_THR;
+			gcs_mpu.tx.data[0] = (uint8_t)mg;
+			gcs_mpu.tx.data[1] = ms;
+
+			if(!_mpu_write_reg(gcs_mpu.raw, 3, false)){
+				LOG_E("register write failed reg=0x%02X values=0x%02X,0x%02X",
+					gcs_mpu.tx.head, gcs_mpu.tx.data[0], gcs_mpu.tx.data[1]);
+				return false;
+			}
+
+			sleep_ms(2);
+
+			LOG_I("motion cfg applied type=MPU60X0 reg=0x%02X values=0x%02X,0x%02X",
+				gcs_mpu.tx.head, gcs_mpu.tx.data[0], gcs_mpu.tx.data[1]);
+			return true;
+
+		// =====================================================
+		// MPU-6500 / MPU-9250 / MPU-9255
+		// Hardware Wake-On-Motion (WOM)
+		// ms is not used here like on the 6050 path
+		// =====================================================
+		case MPU6500_WHO_AM_I:
+		case MPU9250_WHO_AM_I:
+		case MPU9255_WHO_AM_I:
+			(void)ms;
+
+			/*
+			 * WOM threshold granularity on modern parts is much finer than on
+			 * the 6050 path. This mapping uses 1 LSB = 4 mg.
+			 */
+			if(mg < 4)         mg = 1;
+			else if(mg > 1020) mg = 255;
+			else               mg /= 4;
+
+			// Enable accel intelligence / WOM hardware
+			gcs_mpu.tx.head = MPU6500_REG_ACCEL_INTEL_CTRL;
+			if(!_mpu_read_reg(gcs_mpu.tx.head, gcs_mpu.tx.data, 1)){
+				LOG_E("register read failed reg=0x%02X len=1", gcs_mpu.tx.head);
+				return false;
+			}
+
+			gcs_mpu.tx.data[0] |= MPU6500_ACCEL_INTEL_EN;
+			gcs_mpu.tx.data[0] |= MPU6500_ACCEL_INTEL_MODE;
+
+			if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+				LOG_E("register write failed reg=0x%02X value=0x%02X",
+					gcs_mpu.tx.head, gcs_mpu.tx.data[0]);
+				return false;
+			}
+			sleep_ms(1);
+
+			// Write WOM threshold
+			gcs_mpu.tx.head    = MPU6500_REG_WOM_THR;
+			gcs_mpu.tx.data[0] = (uint8_t)mg;
+
+			if(!_mpu_write_reg(gcs_mpu.raw, 2, false)){
+				LOG_E("register write failed reg=0x%02X value=0x%02X",
+					gcs_mpu.tx.head, gcs_mpu.tx.data[0]);
+				return false;
+			}
+
+			sleep_ms(2);
+
+			LOG_I("motion cfg applied type=MPU65X0/92XX reg=0x%02X value=0x%02X",
+				gcs_mpu.tx.head, gcs_mpu.tx.data[0]);
+			return true;
+
+		default:
+			LOG_E("unsupported who_am_i=0x%02X", g_mpu->conf->who_am_i);
+			return false;
 	}
-
-	sleep_ms(2); // Little activation pause
-
-	LOG_I("motion interrupt config applied reg=0x%02X values=0x%02X,0x%02X", gcs_mpu.tx.head, mg, ms);
-
-	return true; // If everything is ok
 }
 
 /**
@@ -1058,6 +1227,7 @@ bool mpu_int_enable(mpu_int_enable_t interrupt){
 
 	LOG_I("interrupt activated");
 
+	g_mpu_int_flag = 0;
 	return true; // When nothing goes wrong
 }
 
@@ -1073,21 +1243,30 @@ bool mpu_int_enable(mpu_int_enable_t interrupt){
  * @note Resets @ref g_mpu_int_flag to false upon being called.
  */
 bool mpu_int_status(void){
-	if(!g_mpu_int_flag) return false; // Checks if an interrupt occurred at MPU_INT_PIN
-	else g_mpu_int_flag = false; // When an interrupt has occurred set the flag false
+	if(!g_mpu_int_flag) return false;
+	g_mpu_int_flag = false;
 
+	gcs_mpu.raw[0] = 0;
+	gcs_mpu.raw[1] = 0;
 	gcs_mpu.tx.head = MPU_REG_INT_STATUS;
-	if(!_mpu_read_reg(gcs_mpu.tx.head, gcs_mpu.tx.data, 1)){ // Read INT_STATUS register save output in gc_mpu else return false
-			LOG_E("register read failed reg=0x%02X len=1", gcs_mpu.tx.head);
-			return false;
+	if(!_mpu_read_reg(gcs_mpu.tx.head, gcs_mpu.tx.data, 1)){
+		LOG_E("register read failed reg=0x%02X len=1", gcs_mpu.tx.head);
+		return false;
 	}
 
-	LOG_D("interrupt=true");
+	LOG_D("int_status=0x%02X", gcs_mpu.tx.data[0]);
 
-	if((gcs_mpu.tx.data[0] & MPU_DATA_RDY_INT) || // Check data ready interrupt
-	   (gcs_mpu.tx.data[0] & MPU_I2C_MST_INT)  || // Check I²C master interrupt
-	   (gcs_mpu.tx.data[0] & MPU_MOTION_INT)   || // Check motion interrupt
-	   (gcs_mpu.tx.data[0] & MPU_FIFO_OFLOW_INT)) return true; // Check fifo overflow interrupt and return true if any was set
-	else return false;
+#if DEBUG_ENABLED
+	if(gcs_mpu.tx.data[0] & MPU_DATA_RDY_INT)
+		LOG_D("interrupt source=raw_data_ready");
+
+	if(gcs_mpu.tx.data[0] & MPU_MOTION_INT)
+		LOG_D("interrupt source=motion/wom");
+
+	if(gcs_mpu.tx.data[0] & MPU_FIFO_OFLOW_INT)
+		LOG_D("interrupt source=fifo_overflow");
+#endif
+
+	return (gcs_mpu.tx.data[0] & (MPU_DATA_RDY_INT | MPU_I2C_MST_INT | MPU_MOTION_INT | MPU_FIFO_OFLOW_INT)) != 0;
 }
 #endif
