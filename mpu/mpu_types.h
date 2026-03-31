@@ -155,8 +155,6 @@ typedef struct mpu_s{
 			float celsius; /**< Scaled temperature in degrees Celsius. */
 		} temp;
 	} v; /**< Latest sampled sensor values. */
-
-	mpu_conf_t *conf;
 } mpu_s;
 
 #endif

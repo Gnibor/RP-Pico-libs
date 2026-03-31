@@ -120,7 +120,7 @@
  * This function prepares and returns an @ref mpu_s instance for later driver
  * use. The exact initialization scope depends on the implementation.
  */
-mpu_s mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr);
+mpu_s *mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr);
 
 /**
  * @brief Select the active MPU device structure used by the driver.
