@@ -319,16 +319,148 @@ This section summarizes key behavioral differences between MPU device families.
 
 ---
 
-## DLPF Selection Guide
+## Timing, Filtering and Sample Rate
 
-Use `mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg)` to choose the tradeoff between:
+The timing behavior of the MPU is mainly controlled by two configuration functions:
+
+- `mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg)`
+- `mpu_smplrt_div(mpu_smplrt_div_t smplrt_div)`
+
+These two settings must always be considered together.
+
+`mpu_dlpf_cfg(...)` does not only select the digital low-pass filter bandwidth. It also changes the internal timing base used by the sensor. This means it affects:
+
+- signal bandwidth
+- signal delay
+- noise level
+- internal gyro sample clock
+- effective output sample rate
+- interrupt timing behavior
+
+`mpu_smplrt_div(...)` then divides that internal base rate down to the final output rate.
+
+In practice, this means that sample rate is never defined by `mpu_smplrt_div_t` alone. The real output rate always depends on the combination of:
+
+```text
+effective_rate = f(dlpf_cfg, smplrt_div)
+```
+
+---
+
+### DLPF Characteristics
+
+The selected DLPF mode determines the tradeoff between bandwidth, delay and internal gyro rate.
+
+| `mpu_dlpf_cfg_t`        | Gyro BW | Delay (ms) | Internal Gyro Rate | Notes                              |
+|-------------------------|---------|------------|--------------------|------------------------------------|
+| `MPU_DLPF_CFG_260HZ`    | 260 Hz  | 0.6 ms     | 8 kHz              | fastest filtered mode              |
+| `MPU_DLPF_CFG_184HZ`    | 184 Hz  | 2.0 ms     | 1 kHz              | good low-latency default           |
+| `MPU_DLPF_CFG_94HZ`     | 94 Hz   | 3.0 ms     | 1 kHz              | balanced                           |
+| `MPU_DLPF_CFG_44HZ`     | 44 Hz   | 4.9 ms     | 1 kHz              | smoother                           |
+| `MPU_DLPF_CFG_21HZ`     | 21 Hz   | 8.5 ms     | 1 kHz              | strong smoothing                   |
+| `MPU_DLPF_CFG_10HZ`     | 10 Hz   | 13.8 ms    | 1 kHz              | high delay                         |
+| `MPU_DLPF_CFG_5HZ`      | 5 Hz    | 19.0 ms    | 1 kHz              | maximum smoothing                  |
+| `MPU_DLPF_CFG_3600HZ`   | 3600 Hz | ~0 ms      | 8 kHz              | unfiltered gyro path               |
+
+Lower bandwidth reduces noise, but increases signal delay.  
+Higher bandwidth gives faster response, but also passes more noise and vibration.
+
+This matters directly for:
+
+- control loop stability
+- motion detection timing
+- interrupt frequency
+- perceived responsiveness
+- software fusion quality
+
+As a rough rule of thumb:
+
+| Delay Range | Meaning                         |
+|-------------|---------------------------------|
+| < 1 ms      | very fast, minimal filtering    |
+| 2–5 ms      | good control / tracking         |
+| 8–19 ms     | strong smoothing, higher lag    |
+
+For fast control systems, low delay is usually more important than absolute smoothness.  
+For logging or slow event detection, stronger filtering is often more useful than fast response.
+
+---
+
+### Internal Base Rate
+
+The internal sample base depends on the selected DLPF mode.
+
+| DLPF Mode                | Internal Gyro Rate | Internal Accel Rate |
+|--------------------------|--------------------|---------------------|
+| `*_260HZ`, `*_3600HZ`    | 8 kHz              | 1 kHz               |
+| all others               | 1 kHz              | 1 kHz               |
+
+This is the key detail that often causes confusion.
+
+Even though the divider register is always configured through `mpu_smplrt_div(...)`, the result changes depending on the active DLPF mode. Two configurations using the same divider can produce completely different output rates if the internal base clock is different.
+
+---
+
+### Sample Rate Formula
+
+The effective sample rate is calculated as:
+
+```c
+sample_rate = internal_rate / (1 + smplrt_div)
+```
+
+Where:
+
+- `internal_rate` is either `8000` or `1000`
+- `smplrt_div` is the raw divider written to `MPU_REG_SMPLRT_DIV`
+
+The `mpu_smplrt_div_t` enum provides predefined divider values:
+
+| Enum                  | Raw Divider | Rate @1 kHz base | Rate @8 kHz base |
+|-----------------------|-------------|------------------|------------------|
+| `MPU_SMPLRT_8KHZ`     | `0x00`      | 1000 Hz          | 8000 Hz          |
+| `MPU_SMPLRT_1KHZ`     | `0x07`      | 125 Hz           | 1000 Hz          |
+| `MPU_SMPLRT_500HZ`    | `0x0E`      | ~66.7 Hz         | ~533.3 Hz        |
+| `MPU_SMPLRT_200HZ`    | `0x27`      | 25 Hz            | 200 Hz           |
+| `MPU_SMPLRT_100HZ`    | `0x5C`      | ~10.6 Hz         | ~84.2 Hz         |
+
+This means the enum names should be understood as intended presets, not as absolute guaranteed output rates in every filter mode.
+
+Example:
+
+- `MPU_SMPLRT_1KHZ`
+  - with 8 kHz internal base → 1000 Hz
+  - with 1 kHz internal base → 125 Hz
+
+So the following is wrong:
+
+```text
+MPU_SMPLRT_1KHZ == always 1000 Hz
+```
+
+The correct view is:
+
+```text
+MPU_SMPLRT_1KHZ == divider preset 0x07
+```
+
+and the final output rate depends on the selected DLPF mode.
+
+---
+
+### DLPF Selection Guide
+
+Use `mpu_dlpf_cfg(...)` to choose the tradeoff between:
 
 - noise
 - latency
 - bandwidth
 - interrupt behavior
 
-### Recommended Selection
+In most applications, DLPF selection should be done first.  
+Only after that should the output rate be adjusted with `mpu_smplrt_div(...)`.
+
+Recommended starting points:
 
 | Use Case                   | Recommended `mpu_dlpf_cfg_t`       | Why                                      |
 |----------------------------|------------------------------------|------------------------------------------|
@@ -340,149 +472,67 @@ Use `mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg)` to choose the tradeoff between:
 | wake-up / motion trigger   | `MPU_DLPF_CFG_44HZ` or `MPU_DLPF_CFG_21HZ`  | suppresses spurious triggers     |
 | vibration capture          | `MPU_DLPF_CFG_3600HZ`              | maximum bandwidth                        |
 
-### Quick Decision Rules
+Quick selection rules:
 
 - choose `MPU_DLPF_CFG_260HZ`
-  - when you need minimum delay
-  - and can tolerate more noise
+  - when minimum delay matters most
+  - and more noise is acceptable
 
 - choose `MPU_DLPF_CFG_184HZ`
-  - for most fast control applications
-  - this is often the best starting point
+  - for most control applications
+  - usually the best first test configuration
 
 - choose `MPU_DLPF_CFG_94HZ`
   - for a balanced default setup
-  - good for general readout and fusion
+  - useful for readout, calibration and fusion
 
 - choose `MPU_DLPF_CFG_44HZ` or lower
-  - when stable, smooth output matters more than response speed
+  - when stable, smooth output matters more than fast response
 
 - choose `MPU_DLPF_CFG_3600HZ`
-  - only when you explicitly want the unfiltered high-rate gyro path
+  - only when the unfiltered high-bandwidth gyro path is explicitly needed
 
-### Important Interaction With `mpu_smplrt_div()`
-
-The DLPF setting does not only affect filtering.
-
-It also changes the internal base rate used by `mpu_smplrt_div()`.
-
-So DLPF selection affects both:
+Because DLPF also changes the internal timing base, filter selection affects both:
 
 - output quality
 - effective sample rate
 
+So DLPF is not just a signal-quality setting. It is also part of timing configuration.
+
 ---
-
-## Effective Delay Table
-
-The effective filter delay is selected through:
-
-- `mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg)`
-
-### DLPF Delay Reference
-
-| `mpu_dlpf_cfg_t`        | Gyro Bandwidth | Approx. Delay | Internal Gyro Rate | Notes                              |
-|-------------------------|----------------|---------------|--------------------|------------------------------------|
-| `MPU_DLPF_CFG_260HZ`    | 260 Hz         | 0.6 ms        | 8 kHz              | fastest filtered mode              |
-| `MPU_DLPF_CFG_184HZ`    | 184 Hz         | 2.0 ms        | 1 kHz              | good low-latency default           |
-| `MPU_DLPF_CFG_94HZ`     | 94 Hz          | 3.0 ms        | 1 kHz              | balanced                           |
-| `MPU_DLPF_CFG_44HZ`     | 44 Hz          | 4.9 ms        | 1 kHz              | smoother, still responsive         |
-| `MPU_DLPF_CFG_21HZ`     | 21 Hz          | 8.5 ms        | 1 kHz              | strong smoothing                   |
-| `MPU_DLPF_CFG_10HZ`     | 10 Hz          | 13.8 ms       | 1 kHz              | high delay                         |
-| `MPU_DLPF_CFG_5HZ`      | 5 Hz           | 19.0 ms       | 1 kHz              | maximum smoothing                  |
-| `MPU_DLPF_CFG_3600HZ`   | 3600 Hz gyro   | very low      | 8 kHz              | effectively unfiltered gyro path   |
-
-### Interpretation
-
-Lower bandwidth reduces noise, but increases delay.
-
-This directly affects:
-
-- control loop stability
-- motion detection timing
-- interrupt response timing
-- perceived sensor responsiveness
-
-### Rule of Thumb
-
-| Delay Range | Typical Meaning                  |
-|-------------|----------------------------------|
-| < 1 ms      | very fast, minimal filtering     |
-| 2–5 ms      | good control / tracking range    |
-| 8–19 ms     | strong smoothing, higher lag     |
 
 ### Practical Implications
 
-- `MPU_DLPF_CFG_260HZ` and `MPU_DLPF_CFG_3600HZ` are best for fast response
-- `MPU_DLPF_CFG_184HZ` or `MPU_DLPF_CFG_94HZ` are usually best for real applications
-- `MPU_DLPF_CFG_21HZ` and below are mainly useful when low noise matters more than latency
+In real applications, filter and sample-rate setup influence much more than raw sensor values.
+
+A higher output rate increases:
+
+- interrupt frequency
+- bus traffic
+- CPU load
+- FIFO pressure
+
+A lower bandwidth increases:
+
+- signal smoothness
+- stability for slow measurements
+
+but also increases:
+
+- phase lag
+- control-loop latency
+- motion-to-interrupt delay
+
+This is why the "best" filter setting depends heavily on the application.
+
+For example:
+
+- a balancing robot needs low latency first
+- a logger often prefers smoother data
+- a wake-up detector benefits from reduced noise to avoid false triggers
+- vibration analysis may require the widest possible bandwidth even if the signal becomes noisy
 
 ---
-
-## Exact Sample Rate Formulas
-
-The effective sample rate is configured through:
-
-- `mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg)`
-- `mpu_smplrt_div(mpu_smplrt_div_t smplrt_div)`
-
-### Internal Base Rate
-
-The internal base rate depends on `mpu_dlpf_cfg_t`:
-
-| DLPF Config              | Internal Gyro Rate | Internal Accel Rate | Notes                                   |
-|--------------------------|--------------------|---------------------|-----------------------------------------|
-| `MPU_DLPF_CFG_260HZ`     | 8 kHz              | 1 kHz               | Special case, lowest delay              |
-| `MPU_DLPF_CFG_184HZ`     | 1 kHz              | 1 kHz               | Filter enabled                          |
-| `MPU_DLPF_CFG_94HZ`      | 1 kHz              | 1 kHz               | Filter enabled                          |
-| `MPU_DLPF_CFG_44HZ`      | 1 kHz              | 1 kHz               | Filter enabled                          |
-| `MPU_DLPF_CFG_21HZ`      | 1 kHz              | 1 kHz               | Filter enabled                          |
-| `MPU_DLPF_CFG_10HZ`      | 1 kHz              | 1 kHz               | Filter enabled                          |
-| `MPU_DLPF_CFG_5HZ`       | 1 kHz              | 1 kHz               | Filter enabled                          |
-| `MPU_DLPF_CFG_3600HZ`    | 8 kHz              | 1 kHz               | No gyro DLPF, accel still limited       |
-
-### Formula
-
-```c
-sample_rate = internal_rate / (1 + smplrt_div)
-```
-
-Where:
-
-- `internal_rate` is either `8000` or `1000`
-- `smplrt_div` is the raw register divider value written to `MPU_REG_SMPLRT_DIV`
-
-### Using Your Enums
-
-Your `mpu_smplrt_div_t` values are already precomputed divider presets:
-
-| Enum                  | Raw Divider | Effective Rate when Base = 1 kHz | Effective Rate when Base = 8 kHz |
-|-----------------------|-------------|----------------------------------|----------------------------------|
-| `MPU_SMPLRT_8KHZ`     | `0x00`      | 1000 Hz                          | 8000 Hz                          |
-| `MPU_SMPLRT_1KHZ`     | `0x07`      | 125 Hz                           | 1000 Hz                          |
-| `MPU_SMPLRT_500HZ`    | `0x0E`      | ~66.7 Hz                         | ~533.3 Hz                        |
-| `MPU_SMPLRT_200HZ`    | `0x27`      | 25 Hz                            | 200 Hz                           |
-| `MPU_SMPLRT_100HZ`    | `0x5C`      | ~10.6 Hz                         | ~84.2 Hz                         |
-
-### Important Note About `mpu_smplrt_div_t`
-
-The names in `mpu_smplrt_div_t` only match the resulting output rate when the internal base rate matches the intended mode.
-
-Example:
-
-- `MPU_SMPLRT_1KHZ` uses divider `0x07`
-- this gives:
-  - `8000 / (1 + 7) = 1000 Hz`
-  - but only when DLPF is in an 8 kHz base-rate mode
-
-If DLPF is set to a 1 kHz base-rate mode, the same divider results in:
-
-- `1000 / (1 + 7) = 125 Hz`
-
-So the effective rate always depends on the combination of:
-
-- `mpu_dlpf_cfg(...)`
-- `mpu_smplrt_div(...)`
 
 ### Practical Examples
 
@@ -495,7 +545,7 @@ Result:
 
 ```text
 internal_rate = 8000 Hz
-sample_rate   = 8000 / (1 + 7) = 1000 Hz
+sample_rate   = 1000 Hz
 ```
 
 ```c
@@ -507,25 +557,31 @@ Result:
 
 ```text
 internal_rate = 1000 Hz
-sample_rate   = 1000 / (1 + 7) = 125 Hz
+sample_rate   = 125 Hz
 ```
 
-### Recommendation
+These two examples use the same divider preset, but produce different output rates because the DLPF mode changes the internal base clock.
 
-For documentation and debugging, always treat the output rate as:
+---
 
-```text
-effective_rate = f(dlpf_cfg, smplrt_div)
-```
+### Key Takeaway
 
-and not as a property of `mpu_smplrt_div_t` alone.
+`mpu_dlpf_cfg(...)` controls:
 
+- bandwidth
+- delay
+- noise behavior
+- internal timing base
+
+`mpu_smplrt_div(...)` divides that timing base into the final output rate.
+
+Both settings always belong together and should never be documented or tuned independently.
 
 ---
 
 ## Filter Setup Examples
 
-The following examples use your public API:
+The following examples use the public API:
 
 - `mpu_dlpf_cfg(...)`
 - `mpu_smplrt_div(...)`

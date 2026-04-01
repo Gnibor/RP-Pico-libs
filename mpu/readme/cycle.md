@@ -195,8 +195,4 @@ This section is a placeholder for later test notes.
 
 ## Recommended Future Additions
 
-- register-level explanation of cycle mode bits
-- per-chip truth table
-- tested example setups
-- current consumption notes
-- wake latency measurements
+- None at the moment
