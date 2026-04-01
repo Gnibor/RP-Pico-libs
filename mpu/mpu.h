@@ -24,8 +24,8 @@
  * @copyright Copyright (c) 2026 (Gnibor) Robin Gerhartz
  * @see https://github.com/Gnibor/RP-Pico-libs
  */
-#ifndef MPU_H
-#define MPU_H
+#ifndef _MPU_H_
+#define _MPU_H_
 
 #include <stdint.h>
 #include "hardware/structs/i2c.h"
@@ -117,22 +117,10 @@
  * @return Initialized device structure.
  *
  * @details
- * This function prepares and returns an @ref mpu_s instance for later driver
+ * This function prepares and returns an @ref mpu_value_t instance for later driver
  * use. The exact initialization scope depends on the implementation.
  */
-mpu_s *mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr);
-
-/**
- * @brief Select the active MPU device structure used by the driver.
- *
- * @param device Pointer to the device structure to bind.
- * @return true on success, false on failure.
- *
- * @details
- * This function is intended for implementations that operate on an internally
- * stored active device pointer.
- */
-bool mpu_use_struct(mpu_s *device);
+mpu_value_t *mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr);
 
 /**
  * @brief Read and validate the WHO_AM_I register.
@@ -145,6 +133,18 @@ bool mpu_use_struct(mpu_s *device);
  * WHO_AM_I register.
  */
 bool mpu_who_am_i(void);
+
+/**
+ * @brief Enable or disable I2C bypass mode.
+ *
+ * @param active true to enable bypass mode, false to disable it.
+ * @return true on success, false on failure.
+ *
+ * @details
+ * Bypass mode allows direct primary-bus access to auxiliary devices connected
+ * through the MPU, depending on device variant and wiring.
+ */
+bool mpu_bypass(bool active);
 
 /**
  * @brief Execute one or more reset operations.
@@ -197,6 +197,15 @@ bool mpu_stby(mpu_stby_t stby);
 bool mpu_clk_sel(mpu_clk_sel_t clksel);
 
 /**
+ * @brief Configure the digital low-pass filter.
+ *
+ * @param cfg Digital low-pass filter configuration, see @ref mpu_dlpf_cfg_t
+ *            in @c mpu_reg_map.h.
+ * @return true on success, false on failure.
+ */
+bool mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg);
+
+/**
  * @brief Configure the sample rate divider.
  *
  * @param smplrt_div Sample-rate divider value, see @ref mpu_smplrt_div_t in
@@ -207,15 +216,6 @@ bool mpu_clk_sel(mpu_clk_sel_t clksel);
  * This function writes the sample-rate divider configuration used by the MPU.
  */
 bool mpu_smplrt_div(mpu_smplrt_div_t smplrt_div);
-
-/**
- * @brief Configure the digital low-pass filter.
- *
- * @param cfg Digital low-pass filter configuration, see @ref mpu_dlpf_cfg_t
- *            in @c mpu_reg_map.h.
- * @return true on success, false on failure.
- */
-bool mpu_dlpf_cfg(mpu_dlpf_cfg_t cfg);
 
 /**
  * @brief Configure the accelerometer high-pass filter.
@@ -241,18 +241,6 @@ bool mpu_ahpf(mpu_ahpf_t ahpf);
 bool mpu_fsr(mpu_fsr_t fsr, mpu_afsr_t afsr);
 
 /**
- * @brief Enable or disable I2C bypass mode.
- *
- * @param active true to enable bypass mode, false to disable it.
- * @return true on success, false on failure.
- *
- * @details
- * Bypass mode allows direct primary-bus access to auxiliary devices connected
- * through the MPU, depending on device variant and wiring.
- */
-bool mpu_bypass(bool active);
-
-/**
  * @brief Calibrate one or more sensor groups.
  *
  * @param sensor Sensor selection and modifier flags, see @ref mpu_sensor_t in
@@ -267,7 +255,7 @@ bool mpu_bypass(bool active);
  * @ref MPU_ACCEL_X, @ref MPU_ACCEL_Y, or @ref MPU_ACCEL_Z should be provided
  * when required by the implementation.
  */
-bool mpu_calibrate(mpu_sensor_t sensor, uint8_t sample);
+bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples);
 
 /**
  * @brief Read one or more sensor groups from the device.
@@ -361,6 +349,6 @@ bool mpu_int_motion_cfg(uint8_t ms, uint16_t mg);
  * implementation-specific status logic.
  */
 bool mpu_int_status(void);
-
 #endif
-#endif // MPU_H
+
+#endif // _MPU_H_
