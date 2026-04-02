@@ -238,10 +238,10 @@ This section summarizes key behavioral differences between MPU device families.
 
 | Feature                  | MPU60X0 (6050/6000)        | MPU6500                  | MPU9250 / 9255              |
 |--------------------------|----------------------------|--------------------------|-----------------------------|
-| Process / Noise          | Older, higher noise        | Improved, lower noise    | Same as MPU6500             |
+| Process / Noise          | Yes, high                  | Yes (Improved), low      | Yes (Improved), low         |
 | Gyro / Accel             | Yes                        | Yes                      | Yes                         |
 | Magnetometer             | No                         | No                       | Yes (AK8963 internal)       |
-| Internal Rate (gyro)     | 8 kHz / 1 kHz (DLPF dep.)  | Same                     | Same                        |
+| Internal Rate (gyro)     | 8 kHz / 1 kHz (DLPF dep.)  | 8 kHz / 1 kHz (DLPF dep.)| 8 kHz / 1 kHz (DLPF dep.)   |
 | Accel-only mode          | Limited                    | Full support             | Full support                |
 | Low-power accel mode     | Basic                      | Advanced (LP accel)      | Advanced (LP accel)         |
 | Motion detection         | Basic                      | Improved (LP + WOM)      | Improved (LP + WOM)         |

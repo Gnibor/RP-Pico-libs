@@ -76,70 +76,70 @@
 
 /** @brief Sample rate divider presets. Formula: Rate = Gyro_Rate / (1 + div). */
 typedef enum {
-    MPU_SMPLRT_8KHZ  = (0 << 0),    /**< 8kHz output (DLPF must be disabled or set to 7). */
-    MPU_SMPLRT_1KHZ  = (0x7 << 0),  /**< 1kHz output rate. */
-    MPU_SMPLRT_500HZ = (0xE << 0),  /**< 500Hz output rate. */
-    MPU_SMPLRT_200HZ = (0x27 << 0), /**< 200Hz output rate. */
-    MPU_SMPLRT_100HZ = (0x5C << 0)  /**< 100Hz output rate. */
+	MPU_SMPLRT_8KHZ  = (0 << 0),    /**< 8kHz output (DLPF must be disabled or set to 7). */
+	MPU_SMPLRT_1KHZ  = (0x7 << 0),  /**< 1kHz output rate. */
+	MPU_SMPLRT_500HZ = (0xE << 0),  /**< 500Hz output rate. */
+	MPU_SMPLRT_200HZ = (0x27 << 0), /**< 200Hz output rate. */
+	MPU_SMPLRT_100HZ = (0x5C << 0)  /**< 100Hz output rate. */
 } mpu_smplrt_div_t;
 
 #define MPU_REG_CONFIG             0x1A /**< General configuration (DLPF & Sync) */
-
+// [0:2]
 /** @brief Digital Low Pass Filter (DLPF) bandwidth configurations. */
 typedef enum {
-    MPU_DLPF_CFG_260HZ  = (0 << 0), /**< 260Hz bandwidth, 0.6ms delay. */
-    MPU_DLPF_CFG_184HZ  = (1 << 0), /**< 184Hz bandwidth, 2.0ms delay. */
-    MPU_DLPF_CFG_94HZ   = (2 << 0), /**< 94Hz bandwidth, 3.0ms delay. */
-    MPU_DLPF_CFG_44HZ   = (3 << 0), /**< 44Hz bandwidth, 4.9ms delay. */
-    MPU_DLPF_CFG_21HZ   = (4 << 0), /**< 21Hz bandwidth, 8.5ms delay. */
-    MPU_DLPF_CFG_10HZ   = (5 << 0), /**< 10Hz bandwidth, 13.8ms delay. */
-    MPU_DLPF_CFG_5HZ    = (6 << 0), /**< 5Hz bandwidth, 19.0ms delay. */
-    MPU_DLPF_CFG_3600HZ = (7 << 0)  /**< No filter (8kHz gyro, 1kHz accel). */
+	MPU_DLPF_CFG_260HZ  = (0 << 0), /**< 260Hz bandwidth, 0.6ms delay. */
+	MPU_DLPF_CFG_184HZ  = (1 << 0), /**< 184Hz bandwidth, 2.0ms delay. */
+	MPU_DLPF_CFG_94HZ   = (2 << 0), /**< 94Hz bandwidth, 3.0ms delay. */
+	MPU_DLPF_CFG_44HZ   = (3 << 0), /**< 44Hz bandwidth, 4.9ms delay. */
+	MPU_DLPF_CFG_21HZ   = (4 << 0), /**< 21Hz bandwidth, 8.5ms delay. */
+	MPU_DLPF_CFG_10HZ   = (5 << 0), /**< 10Hz bandwidth, 13.8ms delay. */
+	MPU_DLPF_CFG_5HZ    = (6 << 0), /**< 5Hz bandwidth, 19.0ms delay. */
+	MPU_DLPF_CFG_3600HZ = (7 << 0)  /**< No filter (8kHz gyro, 1kHz accel). */
 } mpu_dlpf_cfg_t;
-
+// [3:5]
 /** @brief External Frame Sync (FSYNC) configuration for @ref mpu_fsync_config. */
 typedef enum {
-    MPU_EXT_SYNC_DISABLED = (0 << 3), /**< FSYNC pin function disabled. */
-    MPU_EXT_SYNC_TEMP_OUT = (1 << 3), /**< FSYNC bit stored in TEMP_OUT_L[0]. */
-    MPU_EXT_SYNC_XG       = (2 << 3), /**< FSYNC bit stored in GYRO_XOUT_L[0]. */
-    MPU_EXT_SYNC_YG       = (3 << 3), /**< FSYNC bit stored in GYRO_YOUT_L[0]. */
-    MPU_EXT_SYNC_ZG       = (4 << 3), /**< FSYNC bit stored in GYRO_ZOUT_L[0]. */
-    MPU_EXT_SYNC_ACCEL_X  = (5 << 3), /**< FSYNC bit stored in ACCEL_XOUT_L[0]. */
-    MPU_EXT_SYNC_ACCEL_Y  = (6 << 3), /**< FSYNC bit stored in ACCEL_YOUT_L[0]. */
-    MPU_EXT_SYNC_ACCEL_Z  = (7 << 3)  /**< FSYNC bit stored in ACCEL_ZOUT_L[0]. */
+	MPU_EXT_SYNC_DISABLED = (0 << 3), /**< FSYNC pin function disabled. */
+	MPU_EXT_SYNC_TEMP_OUT = (1 << 3), /**< FSYNC bit stored in TEMP_OUT_L[0]. */
+	MPU_EXT_SYNC_XG       = (2 << 3), /**< FSYNC bit stored in GYRO_XOUT_L[0]. */
+	MPU_EXT_SYNC_YG       = (3 << 3), /**< FSYNC bit stored in GYRO_YOUT_L[0]. */
+	MPU_EXT_SYNC_ZG       = (4 << 3), /**< FSYNC bit stored in GYRO_ZOUT_L[0]. */
+	MPU_EXT_SYNC_ACCEL_X  = (5 << 3), /**< FSYNC bit stored in ACCEL_XOUT_L[0]. */
+	MPU_EXT_SYNC_ACCEL_Y  = (6 << 3), /**< FSYNC bit stored in ACCEL_YOUT_L[0]. */
+	MPU_EXT_SYNC_ACCEL_Z  = (7 << 3)  /**< FSYNC bit stored in ACCEL_ZOUT_L[0]. */
 } mpu_ext_sync_set_t;
 
 #define MPU_REG_GYRO_CONFIG        0x1B /**< Gyroscope configuration (Full scale range) */
-
+// [3:4]
 /** @brief Gyroscope full scale range (FSR) settings. */
 typedef enum {
-    MPU_FSR_250DPS  = (0 << 3), /**< +/- 250 deg/s range. */
-    MPU_FSR_500DPS  = (1 << 3), /**< +/- 500 deg/s range. */
-    MPU_FSR_1000DPS = (2 << 3), /**< +/- 1000 deg/s range. */
-    MPU_FSR_2000DPS = (3 << 3)  /**< +/- 2000 deg/s range. */
+	MPU_FSR_250DPS  = (0 << 3), /**< +/- 250 deg/s range. */
+	MPU_FSR_500DPS  = (1 << 3), /**< +/- 500 deg/s range. */
+	MPU_FSR_1000DPS = (2 << 3), /**< +/- 1000 deg/s range. */
+	MPU_FSR_2000DPS = (3 << 3)  /**< +/- 2000 deg/s range. */
 } mpu_fsr_t;
 
 #define MPU_REG_ACCEL_CONFIG       0x1C /**< Accelerometer configuration (FSR & HPF) */
-
+// [0:2]
 /**
  * @brief Accelerometer High Pass Filter (AHPF) settings (Register 0x1C).
  * The filter removes DC offset (gravity) from data for motion detection.
  */
 typedef enum {
-    MPU_AHPF_RESET  = (0 << 0), /**< Reset high pass filter. */
-    MPU_AHPF_5HZ    = (1 << 0), /**< Filter cutoff at 5Hz. */
-    MPU_AHPF_2_5HZ  = (2 << 0), /**< Filter cutoff at 2.5Hz. */
-    MPU_AHPF_1_25HZ = (3 << 0), /**< Filter cutoff at 1.25Hz. */
-    MPU_AHPF_0_63HZ = (4 << 0), /**< Filter cutoff at 0.63Hz. */
-    MPU_AHPF_HOLD   = (7 << 0)  /**< Freeze filter at current value. */
+	MPU_AHPF_RESET  = (0 << 0), /**< Reset high pass filter. */
+	MPU_AHPF_5HZ    = (1 << 0), /**< Filter cutoff at 5Hz. */
+	MPU_AHPF_2_5HZ  = (2 << 0), /**< Filter cutoff at 2.5Hz. */
+	MPU_AHPF_1_25HZ = (3 << 0), /**< Filter cutoff at 1.25Hz. */
+	MPU_AHPF_0_63HZ = (4 << 0), /**< Filter cutoff at 0.63Hz. */
+	MPU_AHPF_HOLD   = (7 << 0)  /**< Freeze filter at current value. */
 } mpu_ahpf_t;
-
+// [3:4]
 /** @brief Accelerometer full scale range (AFSR) settings. */
 typedef enum {
-    MPU_AFSR_2G  = (0 << 3), /**< +/- 2g range. */
-    MPU_AFSR_4G  = (1 << 3), /**< +/- 4g range. */
-    MPU_AFSR_8G  = (2 << 3), /**< +/- 8g range. */
-    MPU_AFSR_16G = (3 << 3)  /**< +/- 16g range. */
+	MPU_AFSR_2G  = (0 << 3), /**< +/- 2g range. */
+	MPU_AFSR_4G  = (1 << 3), /**< +/- 4g range. */
+	MPU_AFSR_8G  = (2 << 3), /**< +/- 8g range. */
+	MPU_AFSR_16G = (3 << 3)  /**< +/- 16g range. */
 } mpu_afsr_t;
 
 /* --- Threshold & Duration Registers --- */
@@ -236,33 +236,35 @@ typedef enum {
 
 /** @brief Configuration flags for INT/FSYNC pin behavior (Register 0x37). */
 typedef enum {
-    MPU_I2C_BYPASS_EN   = (1 << 1), /**< Direct I2C access for secondary sensors on Aux bus. */
-    MPU_FSYNC_INT_EN    = (1 << 2), /**< Enable FSYNC pin to trigger an interrupt. */
-    MPU_FSYNC_INT_LEVEL = (1 << 3), /**< FSYNC logic level (0=Active High, 1=Active Low). */
-    MPU_INT_RD_CLEAR    = (1 << 4), /**< Status bits cleared on any read operation. */
-    MPU_LATCH_INT_EN    = (1 << 5), /**< Hold INT pin until status is read. */
-    MPU_INT_OPEN_DRAIN  = (1 << 6), /**< Set INT pin to open drain (default: push-pull). */
-    MPU_INT_LEVEL_LOW   = (1 << 7), /**< Set INT pin active level to Low (default: High). */
-    MPU_INT_PIN_CFG_ALL = 0xFE      /**< Mask for all pin configuration bits. */
+	MPU_I2C_BYPASS_EN   = (1 << 1), /**< Direct I2C access for secondary sensors on Aux bus. */
+	MPU_FSYNC_INT_EN    = (1 << 2), /**< Enable FSYNC pin to trigger an interrupt. */
+	MPU_FSYNC_INT_LEVEL = (1 << 3), /**< FSYNC logic level (0=Active High, 1=Active Low). */
+	MPU_INT_RD_CLEAR    = (1 << 4), /**< Status bits cleared on any read operation. */
+	MPU_LATCH_INT_EN    = (1 << 5), /**< Hold INT pin until status is read. */
+	MPU_INT_OPEN_DRAIN  = (1 << 6), /**< Set INT pin to open drain (default: push-pull). */
+	MPU_INT_LEVEL_LOW   = (1 << 7), /**< Set INT pin active level to Low (default: High). */
+	MPU_INT_PIN_CFG_ALL = 0xFE      /**< Mask for all pin configuration bits. */
 } mpu_int_pin_cfg_t;
 
 #define MPU_REG_INT_ENABLE         0x38 /**< Interrupt enable register */
-
 /** @brief Available interrupt sources for MPU_INT_ENABLE (Register 0x38). */
 typedef enum {
-    MPU_DATA_RDY_EN    = (1 << 0), /**< Trigger interrupt on new data sample. */
-    MPU_I2C_MST_INT_EN = (1 << 3), /**< Trigger on I2C Master transaction finish. */
-    MPU_FIFO_OFLOW_EN  = (1 << 4), /**< Trigger on FIFO buffer overflow. */
-    MPU_INT_MOTION_EN  = (1 << 6), /**< Trigger on motion detection. */
-    MPU_INT_ENABLE_ALL = 0x59      /**< Mask for common interrupt enable bits. */
+	MPU_DATA_RDY_EN    = (1 << 0), /**< Trigger interrupt on new data sample. */
+	MPU_I2C_MST_INT_EN = (1 << 3), /**< Trigger on I2C Master transaction finish. */
+	MPU_FIFO_OFLOW_EN  = (1 << 4), /**< Trigger on FIFO buffer overflow. */
+	MPU_INT_MOTION_EN  = (1 << 6), /**< Trigger on motion detection. */
+	MPU_INT_ENABLE_ALL = 0x59      /**< Mask for common interrupt enable bits. */
 } mpu_int_enable_t;
 
 #define MPU_REG_DMP_INT_STATUS     0x39 /**< DMP (Digital Motion Processor) status */
 #define MPU_REG_INT_STATUS         0x3A /**< General interrupt status register */
-#define MPU_DATA_RDY_INT           (1 << 0) /**< New data is ready */
-#define MPU_I2C_MST_INT            (1 << 3) /**< Master I2C interrupt event */
-#define MPU_FIFO_OFLOW_INT         (1 << 4) /**< FIFO overflow occurred */
-#define MPU_MOTION_INT             (1 << 6) /**< Motion detection triggered */
+/** @brief Available interrupt states for MPU_REG_INT_STATUS (Register 0x3A). */
+typedef enum {
+	MPU_DATA_RDY_INT   = (1 << 0), /**< Trigger interrupt on new data sample. */
+	MPU_I2C_MST_INT    = (1 << 3), /**< Trigger on I2C Master transaction finish. */
+	MPU_FIFO_OFLOW_INT = (1 << 4), /**< Trigger on FIFO buffer overflow. */
+	MPU_MOTION_INT     = (1 << 6), /**< Trigger on motion detection. */
+} mpu_int_status_t;
 
 /* --- Sensor Data Output (Read-only) --- */
 #define MPU_REG_ACCEL_XOUT_H       0x3B /**< Accel X-axis High byte */
@@ -312,18 +314,18 @@ typedef enum {
 
 /** @brief Motion detection hardware counter decrement settings. */
 typedef enum {
-    MOT_COUNT_RESET   = 0x00, /**< Reset counter to 0 immediately. */
-    MOT_COUNT_DEC_1   = 0x01, /**< Decrement counter by 1. */
-    MOT_COUNT_DEC_2   = 0x02, /**< Decrement counter by 2. */
-    MOT_COUNT_DEC_4   = 0x03  /**< Decrement counter by 4. */
+	MOT_COUNT_RESET   = 0x00, /**< Reset counter to 0 immediately. */
+	MOT_COUNT_DEC_1   = 0x01, /**< Decrement counter by 1. */
+	MOT_COUNT_DEC_2   = 0x02, /**< Decrement counter by 2. */
+	MOT_COUNT_DEC_4   = 0x03  /**< Decrement counter by 4. */
 } mpu_mot_count_t;
 
 /** @brief Power-on delay settings for motion detection (Register 0x69). */
 typedef enum {
-    MOT_DELAY_0MS     = (0 << 4), /**< 0ms delay before detection starts. */
-    MOT_DELAY_1MS     = (1 << 4), /**< 1ms power-on delay. */
-    MOT_DELAY_2MS     = (2 << 4), /**< 2ms power-on delay. */
-    MOT_DELAY_3MS     = (3 << 4)  /**< 3ms power-on delay. */
+	MOT_DELAY_0MS     = (0 << 4), /**< 0ms delay before detection starts. */
+	MOT_DELAY_1MS     = (1 << 4), /**< 1ms power-on delay. */
+	MOT_DELAY_2MS     = (2 << 4), /**< 2ms power-on delay. */
+	MOT_DELAY_3MS     = (3 << 4)  /**< 3ms power-on delay. */
 } mpu_mot_delay_t;
 
 /* --- MPU-6500 / 9250 / 9255 Motion / Wake-On-Motion --- */
@@ -346,13 +348,13 @@ typedef enum {
 
 /** @brief Clock source selection for timing and sampling. */
 typedef enum {
-    MPU_CLK_INTERNAL = (0 << 0), /**< Internal 8MHz oscillator. */
-    MPU_CLK_XGYRO    = (1 << 0), /**< PLL with X-Gyro reference (Recommended). */
-    MPU_CLK_YGYRO    = (2 << 0), /**< PLL with Y-Gyro reference. */
-    MPU_CLK_ZGYRO    = (3 << 0), /**< PLL with Z-Gyro reference. */
-    MPU_CLK_EXT32KHZ = (4 << 0), /**< External 32.768kHz clock. */
-    MPU_CLK_EXT19MHZ = (5 << 0), /**< External 19.2MHz clock. */
-    MPU_CLK_STOP     = (7 << 0)  /**< Stop clock and reset timing. */
+	MPU_CLK_INTERNAL = (0 << 0), /**< Internal 8MHz oscillator. */
+	MPU_CLK_XGYRO    = (1 << 0), /**< PLL with X-Gyro reference (Recommended). */
+	MPU_CLK_YGYRO    = (2 << 0), /**< PLL with Y-Gyro reference. */
+	MPU_CLK_ZGYRO    = (3 << 0), /**< PLL with Z-Gyro reference. */
+	MPU_CLK_EXT32KHZ = (4 << 0), /**< External 32.768kHz clock. */
+	MPU_CLK_EXT19MHZ = (5 << 0), /**< External 19.2MHz clock. */
+	MPU_CLK_STOP     = (7 << 0)  /**< Stop clock and reset timing. */
 } mpu_clk_sel_t;
 
 #define MPU_TEMP_DIS               (1 << 3) /**< Disable temperature sensor */
@@ -365,12 +367,15 @@ typedef enum {
 
 /** @brief Standby settings for individual sensor axes (Register 0x6C). */
 typedef enum {
-    MPU_STBY_ZG    = (1 << 0), /**< Put Z-Gyro in standby. */
-    MPU_STBY_YG    = (1 << 1), /**< Put Y-Gyro in standby. */
-    MPU_STBY_XG    = (1 << 2), /**< Put X-Gyro in standby. */
-    MPU_STBY_GYRO  = (7 << 0), /**< Put all Gyro axes in standby. */
-    MPU_STBY_ACCEL = (7 << 3), /**< Put all Accel axes in standby. */
-    MPU_STBY_ALL   = 0x3F      /**< Put all 6 sensor axes in standby. */
+	MPU_STBY_ZG    = (1 << 0), /**< Put Z-Gyro in standby. */
+	MPU_STBY_YG    = (1 << 1), /**< Put Y-Gyro in standby. */
+	MPU_STBY_XG    = (1 << 2), /**< Put X-Gyro in standby. */
+	MPU_STBY_GYRO  = (7 << 0), /**< Put all Gyro axes in standby. */
+	MPU_STBY_ZA    = (1 << 3), /**< Put Z-Gyro in standby. */
+	MPU_STBY_YA    = (1 << 4), /**< Put Y-Gyro in standby. */
+	MPU_STBY_XA    = (1 << 5), /**< Put X-Gyro in standby. */
+	MPU_STBY_ACCEL = (7 << 3), /**< Put all Accel axes in standby. */
+	MPU_STBY_ALL   = 0x3F      /**< Put all 6 sensor axes in standby. */
 } mpu_stby_t;
 
 /**
@@ -382,25 +387,25 @@ typedef enum {
  * - 0x200: MPU-6500/9250 specific (Value for LP_ACCEL_ODR [3:0])
  */
 typedef enum {
-    /* Legacy MPU (60X0) - Marker 0x0000 | Bits for PWR_MGMT_2 [7:6] */
-    MPU_LP_WAKE_1_25HZ      = (0x000 | (0 << 6)), /**< 1.25Hz (Legacy) */
-    MPU_LP_WAKE_5HZ         = (0x000 | (1 << 6)), /**< 5Hz (Legacy) */
-    MPU_LP_WAKE_20HZ        = (0x000 | (2 << 6)), /**< 20Hz (Legacy) */
-    MPU_LP_WAKE_40HZ        = (0x000 | (3 << 6)), /**< 40Hz (Legacy) */
+	/* Legacy MPU (60X0) - Marker 0x0000 | Bits for PWR_MGMT_2 [7:6] */
+	MPU_LP_WAKE_1_25HZ      = (0x000 | (0 << 6)), /**< 1.25Hz (Legacy) */
+	MPU_LP_WAKE_5HZ         = (0x000 | (1 << 6)), /**< 5Hz (Legacy) */
+	MPU_LP_WAKE_20HZ        = (0x000 | (2 << 6)), /**< 20Hz (Legacy) */
+	MPU_LP_WAKE_40HZ        = (0x000 | (3 << 6)), /**< 40Hz (Legacy) */
 
-    /* Modern MPU (6500/925X) - Marker 0x0100 | Bits for LP_ACCEL_ODR [3:0] */
-    MPU6500_LP_WAKE_0_24HZ  = (0x100 | 0x00), /**< 0.24Hz (Modern) */
-    MPU6500_LP_WAKE_0_49HZ  = (0x100 | 0x01), /**< 0.49Hz (Modern) */
-    MPU6500_LP_WAKE_0_98HZ  = (0x100 | 0x02), /**< 0.98Hz (Modern) */
-    MPU6500_LP_WAKE_1_95HZ  = (0x100 | 0x03), /**< 1.95Hz (Modern) */
-    MPU6500_LP_WAKE_3_91HZ  = (0x100 | 0x04), /**< 3.91Hz (Modern) */
-    MPU6500_LP_WAKE_7_81HZ  = (0x100 | 0x05), /**< 7.81Hz (Modern) */
-    MPU6500_LP_WAKE_15_63HZ = (0x100 | 0x06), /**< 15.63Hz (Modern) */
-    MPU6500_LP_WAKE_31_25HZ = (0x100 | 0x07), /**< 31.25Hz (Modern) */
-    MPU6500_LP_WAKE_62_5HZ  = (0x100 | 0x08), /**< 62.5Hz (Modern) */
-    MPU6500_LP_WAKE_125HZ   = (0x100 | 0x09), /**< 125Hz (Modern) */
-    MPU6500_LP_WAKE_250HZ   = (0x100 | 0x0A), /**< 250Hz (Modern) */
-    MPU6500_LP_WAKE_500HZ   = (0x100 | 0x0B)  /**< 500Hz (Modern) */
+	/* Modern MPU (6500/925X) - Marker 0x0100 | Bits for LP_ACCEL_ODR [3:0] */
+	MPU6500_LP_WAKE_0_24HZ  = (0x100 | 0x00), /**< 0.24Hz (Modern) */
+	MPU6500_LP_WAKE_0_49HZ  = (0x100 | 0x01), /**< 0.49Hz (Modern) */
+	MPU6500_LP_WAKE_0_98HZ  = (0x100 | 0x02), /**< 0.98Hz (Modern) */
+	MPU6500_LP_WAKE_1_95HZ  = (0x100 | 0x03), /**< 1.95Hz (Modern) */
+	MPU6500_LP_WAKE_3_91HZ  = (0x100 | 0x04), /**< 3.91Hz (Modern) */
+	MPU6500_LP_WAKE_7_81HZ  = (0x100 | 0x05), /**< 7.81Hz (Modern) */
+	MPU6500_LP_WAKE_15_63HZ = (0x100 | 0x06), /**< 15.63Hz (Modern) */
+	MPU6500_LP_WAKE_31_25HZ = (0x100 | 0x07), /**< 31.25Hz (Modern) */
+	MPU6500_LP_WAKE_62_5HZ  = (0x100 | 0x08), /**< 62.5Hz (Modern) */
+	MPU6500_LP_WAKE_125HZ   = (0x100 | 0x09), /**< 125Hz (Modern) */
+	MPU6500_LP_WAKE_250HZ   = (0x100 | 0x0A), /**< 250Hz (Modern) */
+	MPU6500_LP_WAKE_500HZ   = (0x100 | 0x0B)  /**< 500Hz (Modern) */
 } mpu_lp_wake_t;
 
 #define MPU6500_BIT_DIS_LP_WAIT    (1 << 7) /**< Disable low-power wait mode (MPU-6500 only) */

@@ -126,7 +126,7 @@ See `mpu_reg_map.h` for the full register and bit definition list.
 ---
 
 ## Minimal Example
-
+```c
     #include "mpu.h"
 
     int main(void) {
@@ -149,6 +149,7 @@ See `mpu_reg_map.h` for the full register and bit definition list.
 
         return 0;
     }
+```
 
 ---
 

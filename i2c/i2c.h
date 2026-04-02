@@ -1,5 +1,5 @@
-#ifndef _I2C_H
-#define _I2C_H
+#ifndef _I2C_H_
+#define _I2C_H_
 
 /**
  * @file _i2c_lowlevel.h
@@ -40,4 +40,4 @@ bool _i2c_write_buffer(const _i2c_hw_config *cfg, uint8_t addr, const uint8_t *s
 /** @brief Reads an array of bytes from the specified slave address. */
 bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len);
 
-#endif
+#endif // _I2C_H_
