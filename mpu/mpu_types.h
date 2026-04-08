@@ -2,6 +2,7 @@
 #define _MPU_TYPES_H_
 
 #include <stdint.h>
+#include "mpu_cfg.h"
 
 /**
  * @brief Sensor selection and modifier flags for read and calibration operations.
@@ -21,7 +22,7 @@
  *   units, if supported by the called function
  * - @ref MPU_ACCEL_X, @ref MPU_ACCEL_Y, and @ref MPU_ACCEL_Z indicate the
  *   accelerometer axis used as gravity reference during calibration
- *
+
  * @note
  * The axis calibration flags include @ref MPU_ACCEL internally.
  */
@@ -117,6 +118,24 @@ typedef enum {
 // =====================
 // === Data Structur ===
 // =====================
+#if MPU_INT_PIN
+// Interrupt Status
+typedef union {
+	uint8_t raw; // [7:0]
+
+	struct {
+		uint8_t data_rdy : 1; // [0:0]
+uint8_t : 2; // [2:1]
+		uint8_t i2c_mst : 1; // [3:3]
+		uint8_t fifo_oflow : 1; // [4:4]
+uint8_t : 1; // [5:5]
+		uint8_t motion : 1; // [6:6]
+uint8_t : 1; // [7:7]
+	} status;
+} mpu_interrupt_status_t;
+#endif
+
+
 /**
  * @brief Main MPU device state structure.
  *
@@ -151,6 +170,10 @@ typedef struct mpu_value_t{
 		int16_t raw;   /**< Raw temperature register value. */
 		float celsius; /**< Scaled temperature in degrees Celsius. */
 	} temp;
+
+#if MPU_INT_PIN
+	mpu_interrupt_status_t interrupt; /**< Raw interrupt status register and each status individual */
+#endif
 } mpu_value_t;
 
 #endif // _MPU_TYPES_H_

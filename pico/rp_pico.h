@@ -8,14 +8,18 @@
 #define TESTING_ENABLED 1
 #endif
 
+#define AWAIT_USB() do { \
+    while (!stdio_usb_connected()) { \
+        sleep_ms(100); \
+    } \
+} while(0)
+
 static inline void pico_stdio_init(void){
 	stdio_init_all();
 
 #if TESTING_ENABLED
 	/* Block until USB is connected (development only) */
-	while (!stdio_usb_connected()) {
-		sleep_ms(100);
-	}
+	AWAIT_USB();
 #endif
 }
 

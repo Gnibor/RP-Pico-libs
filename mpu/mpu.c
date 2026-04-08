@@ -31,9 +31,11 @@
 #include "i2c.h"
 #include "byte_cache.h"
 
-// ===============
-// === Structs ===
-// ===============
+extern uint8_t test;
+
+// ========================
+// === Structs / Unions ===
+// ========================
 typedef union {
 	uint8_t raw[14];
 
@@ -102,7 +104,10 @@ static _i2c_hw_config g_i2c;
 mpu_value_t *mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr){
 
 	int size = sizeof(g_mpuc);
-	LOG_W("conf=%d, value=%d, all(strucs, cache, buffer)=%d", size, sizeof(g_mpuv), (size+sizeof(g_mpuv)+sizeof(gc_mpu_ret)+sizeof(gb_mpu)+sizeof(g_i2c)));
+	LOG_W("conf=%d, value=%d, all(strucs, cache, buffer)=%d, int=0x%d", size, sizeof(g_mpuv), (size + sizeof(g_mpuv)
+													+ sizeof(gc_mpu_ret)
+													+ sizeof(gb_mpu)
+													+ sizeof(g_i2c)));
 
 	if(!i2c_hw){
 		g_i2c.hw = i2c1_hw;
@@ -223,7 +228,7 @@ bool mpu_who_am_i(void){
 		return false;
 	}
 
-	switch (g_mpuc.who_am_i) {
+	switch(g_mpuc.who_am_i){
 		case MPU60X0_WHO_AM_I:
 			LOG_I("device detected type=MPU60X0 who_am_i=0x%02X", g_mpuc.who_am_i);
 			return true;
@@ -290,54 +295,54 @@ bool mpu_reset(mpu_reset_t reset){
 	// 1. Read current register values into global cache to preserve existing bits
 	// We read 3 bytes starting from SIGNAL_PATH_RESET (likely covering USER_CTRL & PWR_MGMT_1)
 	gb_mpu.tx.head = MPU_REG_SIGNAL_PATH_RESET;
-	if (!_mpu_read_reg(gb_mpu.tx.head, gb_mpu.tx.data, 3)){
+	if(!_mpu_read_reg(gb_mpu.tx.head, gb_mpu.tx.data, 3)){
 		LOG_E("register read failed reg=0x%02X len=3", MPU_REG_SIGNAL_PATH_RESET);
 		return false;
 	}
 
 	// 2. Modify SIGNAL_PATH_RESET bits (TEMP, ACCEL, GYRO)
-	if (reset & MPU_RESET_TEMP)  gb_mpu.tx.data[0] |= MPU_TEMP_RESET;
-	if (reset & MPU_RESET_ACCEL) gb_mpu.tx.data[0] |= MPU_ACCEL_RESET;
-	if (reset & MPU_RESET_GYRO)  gb_mpu.tx.data[0] |= MPU_GYRO_RESET;
+	if(reset & MPU_RESET_TEMP)  gb_mpu.tx.data[0] |= MPU_TEMP_RESET;
+	if(reset & MPU_RESET_ACCEL) gb_mpu.tx.data[0] |= MPU_ACCEL_RESET;
+	if(reset & MPU_RESET_GYRO)  gb_mpu.tx.data[0] |= MPU_GYRO_RESET;
 
 	// 3. Modify USER_CTRL bits (SIG_COND, I2C_MST, FIFO)
-	if (reset & MPU_RESET_SIG_COND) gb_mpu.tx.data[1] |= MPU_SIG_COND_RESET;
-	if (reset & MPU_RESET_I2C_MST)  gb_mpu.tx.data[1] |= MPU_I2C_MST_RESET;
-	if (reset & MPU_RESET_FIFO)     gb_mpu.tx.data[1] |= MPU_FIFO_RESET;
+	if(reset & MPU_RESET_SIG_COND) gb_mpu.tx.data[1] |= MPU_SIG_COND_RESET;
+	if(reset & MPU_RESET_I2C_MST)  gb_mpu.tx.data[1] |= MPU_I2C_MST_RESET;
+	if(reset & MPU_RESET_FIFO)     gb_mpu.tx.data[1] |= MPU_FIFO_RESET;
 
 	// 4. Modify PWR_MGMT_1 bits (DEVICE_RESET)
-	if (reset & MPU_RESET_DEVICE) gb_mpu.tx.data[2] |= MPU_DEVICE_RESET;
+	if(reset & MPU_RESET_DEVICE) gb_mpu.tx.data[2] |= MPU_DEVICE_RESET;
 
 	// 5. Execution Logic
-	if (reset & MPU_RESET_ALL){
+	if(reset & MPU_RESET_ALL){
 		LOG_I("full chip reset sequence started");
 
 		// Trigger Main Device Reset via PWR_MGMT_1
 		gb_mpu.tx.head = MPU_REG_PWR_MGMT_1;
 		gb_mpu.tx.data[0] = gb_mpu.tx.data[2] | MPU_DEVICE_RESET; // Warning: index logic should match your register mapping
-		if (!_mpu_write_reg(gb_mpu.raw, 2, false)) return false;
+		if(!_mpu_write_reg(gb_mpu.raw, 2, false)) return false;
 		sleep_ms(150); // Wait for internal reboot
 
 		// Reset Signal Paths (Analog/Digital Filters)
 		LOG_D("signal path reset started");
 		gb_mpu.tx.head = MPU_REG_SIGNAL_PATH_RESET;
 		gb_mpu.tx.data[0] |= (MPU_TEMP_RESET | MPU_ACCEL_RESET | MPU_GYRO_RESET);
-		if (!_mpu_write_reg(gb_mpu.raw, 2, false)) return false;
+		if(!_mpu_write_reg(gb_mpu.raw, 2, false)) return false;
 		sleep_ms(200);
 
 		// Reset User Control (FIFO, I2C Master, Logic)
 		LOG_D("user control reset started");
 		gb_mpu.tx.head = MPU_REG_USER_CTRL;
 		gb_mpu.tx.data[0] = gb_mpu.tx.data[1] | (MPU_SIG_COND_RESET | MPU_I2C_MST_RESET | MPU_FIFO_RESET);
-		if (!_mpu_write_reg(gb_mpu.raw, 2, false)) return false;
+		if(!_mpu_write_reg(gb_mpu.raw, 2, false)) return false;
 		sleep_ms(200);
 
 		LOG_I("full reset complete");
-	} else {
+	}else{
 		// Partial reset of specific signal paths
 		LOG_I("partial reset requested mask=0x%02X", reset);
 		gb_mpu.tx.head = MPU_REG_SIGNAL_PATH_RESET;
-		if (!_mpu_write_reg(gb_mpu.raw, 4, false)){
+		if(!_mpu_write_reg(gb_mpu.raw, 4, false)){
 			LOG_E("partial reset write failed");
 			return false;
 		}
@@ -648,7 +653,7 @@ bool mpu_calibrate(mpu_sensor_t sensor, uint8_t samples){
 		LOG_D("gyro offset x=%d y=%d z=%d", g_mpuc.offset_gyro.x, g_mpuc.offset_gyro.y, g_mpuc.offset_gyro.z);
 
 	}
-	if (mask & MPU_ACCEL){ // Checks if accelerometer should be calibrated
+	if(mask & MPU_ACCEL){ // Checks if accelerometer should be calibrated
 		g_mpuc.offset_accel.x = 0;
 		g_mpuc.offset_accel.y = 0;
 		g_mpuc.offset_accel.z = 0;
