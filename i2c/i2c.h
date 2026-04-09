@@ -38,6 +38,6 @@ void _i2c_init(_i2c_hw_config *cfg);
 bool _i2c_write_buffer(const _i2c_hw_config *cfg, uint8_t addr, const uint8_t *src, size_t len, bool nostop);
 
 /** @brief Reads an array of bytes from the specified slave address. */
-bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len);
+bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len, bool nostop);
 
 #endif // _I2C_H_
