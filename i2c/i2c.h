@@ -34,10 +34,12 @@ void _i2c_recover_bus(const _i2c_hw_config *cfg);
 /** @brief Resets and initializes the I2C controller with the given config. */
 void _i2c_init(_i2c_hw_config *cfg);
 
+void _i2c_recover_lines(const _i2c_hw_config *cfg);
+
 /** @brief Writes an array of bytes to the specified slave address. */
 bool _i2c_write_buffer(const _i2c_hw_config *cfg, uint8_t addr, const uint8_t *src, size_t len, bool nostop);
 
 /** @brief Reads an array of bytes from the specified slave address. */
-bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len, bool nostop);
+bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len);
 
 #endif // _I2C_H_

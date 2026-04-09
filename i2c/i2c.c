@@ -143,119 +143,87 @@ static void _i2c_set_addr(const _i2c_hw_config *cfg, uint8_t addr) {
 	}
 }
 
+void _i2c_recover_lines(const _i2c_hw_config *cfg){
+	gpio_init(cfg->sda_pin);
+	gpio_set_dir(cfg->sda_pin, GPIO_OUT);
+
+	gpio_init(cfg->scl_pin);
+	gpio_set_dir(cfg->scl_pin, GPIO_OUT);
+
+	for(int i = 0; i < 9; i++){
+		gpio_put(cfg->scl_pin, 1);
+		sleep_us(5);
+		gpio_put(cfg->scl_pin, 0);
+		sleep_us(5);
+	}
+
+	gpio_put(cfg->sda_pin, 1);
+	gpio_put(cfg->scl_pin, 1);
+	sleep_us(5);
+}
+
 /**
  * @brief Fully featured write buffer with optional STOP suppression.
  */
-bool _i2c_write_buffer(const _i2c_hw_config *cfg, uint8_t addr, const uint8_t *src, size_t len, bool nostop){
-	if(len == 0) return false;
-
-	// Alte Abort-Zustände vor neuem Transfer löschen
-	(void)cfg->hw->clr_tx_abrt;
-
+bool _i2c_write_buffer(const _i2c_hw_config *cfg, uint8_t addr, const uint8_t *src, size_t len, bool nostop) {
+	if (len == 0) return false;
 	_i2c_set_addr(cfg, addr);
 
-	for(size_t i = 0; i < len; i++){
-		if(!_i2c_wait_for_status(cfg, (volatile uint32_t*)&cfg->hw->status, I2C_IC_STATUS_TFNF_BITS, true, "TX_FIFO_WAIT")) return false;
+	for (size_t i = 0; i < len; i++) {
+		// Wait for Transmit FIFO space
+		if (!_i2c_wait_for_status(cfg, (volatile uint32_t*)&cfg->hw->status, I2C_IC_STATUS_TFNF_BITS, true, "TX_FIFO_WAIT")) return false;
 
 		uint32_t cmd = src[i];
-		if((i == len - 1) && !nostop) cmd |= I2C_IC_DATA_CMD_STOP_BITS;
+		// Send STOP bit only on the last byte if NOSTOP is false
+		if ((i == len - 1) && !nostop) {
+			cmd |= I2C_IC_DATA_CMD_STOP_BITS;
+		}
 
 		cfg->hw->data_cmd = cmd;
 	}
 
-	absolute_time_t timeout_time = make_timeout_time_us(cfg->timeout_us);
-
-	// Warten bis Transfer wirklich durch ist oder Abort kommt
-	while(1){
-		if(cfg->hw->raw_intr_stat & I2C_IC_RAW_INTR_STAT_TX_ABRT_BITS){
-			LOG_W("I2C NACK at addr 0x%02X", addr);
-			(void)cfg->hw->clr_tx_abrt;
-			return false;
-		}
-
-		if(!nostop){
-			if(!_i2c_is_busy(cfg) && (cfg->hw->status & I2C_IC_STATUS_TFE_BITS)) break;
-		}else{
-			if(cfg->hw->status & I2C_IC_STATUS_TFE_BITS) break;
-		}
-
-		if(time_reached(timeout_time)){
-			LOG_E("I2C Timeout (Write) at addr 0x%02X", addr);
-			return false;
+	// If we sent a STOP, wait for bus to become idle
+	if (!nostop) {
+		absolute_time_t timeout_time = make_timeout_time_us(cfg->timeout_us);
+		while (_i2c_is_busy(cfg)) {
+			if (time_reached(timeout_time)) {
+				LOG_E("I2C Busy Timeout (Write) at addr 0x%02X", addr);
+				return false;
+			}
 		}
 	}
 
-	// Sicherheitshalber nochmal prüfen
-	if(cfg->hw->raw_intr_stat & I2C_IC_RAW_INTR_STAT_TX_ABRT_BITS){
-		LOG_W("I2C NACK late at addr 0x%02X", addr);
-		(void)cfg->hw->clr_tx_abrt;
+	// Check for NACK/Abort
+	if (cfg->hw->raw_intr_stat & I2C_IC_RAW_INTR_STAT_TX_ABRT_BITS) {
+		LOG_W("I2C NACK at addr 0x%02X", addr);
+		cfg->hw->clr_tx_abrt;
 		return false;
 	}
-
 	return true;
 }
 
 /**
  * @brief Low-level read implementation. Triggers CMD bits in FIFO.
  */
-bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len, bool nostop){
-	if(len == 0 || !dst) return false;
-
-	(void)cfg->hw->clr_tx_abrt;
+bool _i2c_read_buffer(const _i2c_hw_config *cfg, uint8_t addr, uint8_t *dst, size_t len) {
+	if (len == 0) return false;
 	_i2c_set_addr(cfg, addr);
 
-	for(size_t i = 0; i < len; i++){
-		if(!_i2c_wait_for_status(cfg, (volatile uint32_t*)&cfg->hw->status, I2C_IC_STATUS_TFNF_BITS, true, "RX_CMD_WAIT")) return false;
+	for (size_t i = 0; i < len; i++) {
+		// Step 1: Send a read command into the FIFO
+		if (!_i2c_wait_for_status(cfg, (volatile uint32_t*)&cfg->hw->status, I2C_IC_STATUS_TFNF_BITS, true, "RX_CMD_FIFO_FULL")) return false;
 
-		uint32_t cmd = I2C_IC_DATA_CMD_CMD_BITS;
-		if((i == len - 1) && !nostop) cmd |= I2C_IC_DATA_CMD_STOP_BITS;
+		bool last = (i == len - 1);
+		uint32_t cmd = I2C_IC_DATA_CMD_CMD_BITS; // Set CMD bit for READ
+		if (last) cmd |= I2C_IC_DATA_CMD_STOP_BITS;
+
 		cfg->hw->data_cmd = cmd;
+
+		// Step 2: Wait for data to arrive in Receive FIFO (RFNE = Receive FIFO Not Empty)
+		if (!_i2c_wait_for_status(cfg, (volatile uint32_t*)&cfg->hw->status, I2C_IC_STATUS_RFNE_BITS, true, "RX_DATA_TIMEOUT")) return false;
+
+		// Read from DATA_CMD register and mask the data bits
+		dst[i] = (uint8_t)(cfg->hw->data_cmd & I2C_IC_DATA_CMD_DAT_BITS);
 	}
-
-	for(size_t i = 0; i < len; i++){
-		absolute_time_t timeout_time = make_timeout_time_us(cfg->timeout_us);
-
-		while(1){
-			if(cfg->hw->raw_intr_stat & I2C_IC_RAW_INTR_STAT_TX_ABRT_BITS){
-				LOG_W("I2C NACK at addr 0x%02X", addr);
-				(void)cfg->hw->clr_tx_abrt;
-				return false;
-			}
-
-			if(cfg->hw->status & I2C_IC_STATUS_RFNE_BITS){
-				dst[i] = (uint8_t)cfg->hw->data_cmd;
-				break;
-			}
-
-			if(time_reached(timeout_time)){
-				LOG_E("I2C Timeout: RX_DATA_TIMEOUT addr=0x%02X", addr);
-				return false;
-			}
-		}
-	}
-
-	if(!nostop){
-		absolute_time_t timeout_time = make_timeout_time_us(cfg->timeout_us);
-
-		while(_i2c_is_busy(cfg)){
-			if(cfg->hw->raw_intr_stat & I2C_IC_RAW_INTR_STAT_TX_ABRT_BITS){
-				LOG_W("I2C NACK late at addr 0x%02X", addr);
-				(void)cfg->hw->clr_tx_abrt;
-				return false;
-			}
-
-			if(time_reached(timeout_time)){
-				LOG_E("I2C Busy Timeout (Read) at addr 0x%02X", addr);
-				return false;
-			}
-		}
-	}
-
-	if(cfg->hw->raw_intr_stat & I2C_IC_RAW_INTR_STAT_TX_ABRT_BITS){
-		LOG_W("I2C NACK late at addr 0x%02X", addr);
-		(void)cfg->hw->clr_tx_abrt;
-		return false;
-	}
-
 	return true;
 }
