@@ -45,11 +45,16 @@ typedef enum{
  * @note Values should not edited manuell, please use the hx711_ functions.
  */
 typedef struct{
+	int32_t raw; /**< Raw - offset (if set) for you to read. */
+	double scaled; /**< The scaled value if you used @ref hx711_read_uv or @ref hx711_read_gram */
+
+/// @note Private (Please use the declarated functions)
 	uint8_t sck, din;     /**< GPIO numbers for HX711 clock (SCK) and data output (DOUT). */
 	hx711_config_t conf;  /**< Set HX711 device channel / gain configuration. */
 	bool new_conf;        /**< True if a new configuration was set and one conversion must be discarded. */
+	float divisor;
 	int32_t offset;       /**< Software offset subtracted from each returned reading. */
-	float gram_scale;    /**< Kalibrierfaktor: Wie viele µV sind 1 Gramm? */
+	double gram_scale;    /**< Kalibrierfaktor: Wie viele µV sind 1 Gramm? */
 } hx711_t;
 
 /**
@@ -105,7 +110,7 @@ void hx711_set_config(hx711_t *dev, hx711_config_t conf);
  * If a new configuration was set before this call, the first conversion
  * is discarded internally and the second one is returned.
  */
-int32_t hx711_read(hx711_t *dev);
+void hx711_read(hx711_t *dev);
 
 /**
  * @brief Read multiple HX711 samples and return their arithmetic mean.
@@ -122,7 +127,7 @@ int32_t hx711_read(hx711_t *dev);
  * @warning
  * The caller must ensure that @p samples is greater than 1.
  */
-int32_t hx711_read_avg(hx711_t *dev, int samples);
+void hx711_read_avg(hx711_t *dev, int samples);
 
 /**
  * @brief Measure and store the current software offset in @ref hx711_t.offset
@@ -148,11 +153,11 @@ void hx711_set_offset(hx711_t *dev, int samples);
  * 2. Division durch Gain-Faktor (z.B. 25.6)
  * 
  * @param dev Treiber-Handle.
- * @return float Spannung in µV.
+ * @return double Spannung in µV.
  */
-float hx711_read_uv(hx711_t *dev);
-float hx711_read_avg_uv(hx711_t *dev, uint8_t samples);
-float hx711_get_gram(hx711_t *dev, int samples);
+void hx711_read_uv(hx711_t *dev);
+void hx711_read_avg_uv(hx711_t *dev, uint8_t samples);
+void hx711_read_gram(hx711_t *dev, int samples);
 void  hx711_calibrate(hx711_t *dev, int32_t weight_gold, int samples);
 
 #endif // _HX711_H_
