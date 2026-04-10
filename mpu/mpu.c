@@ -86,7 +86,7 @@ static byte_cache14_t gb_mpu = {0};
 /** @brief Cache for the last I2C operation return value (byte count or error). */
 static int gc_mpu_ret = 0;
 
-static _i2c_hw_config g_i2c;
+static i2c_hw_config g_i2c;
 
 /**
  * @brief Initializes the MPU device struct and the Raspberry Pi Pico I2C hardware.
@@ -126,8 +126,8 @@ mpu_value_t *mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr){
 	g_i2c.sda_pin = MPU_SDA_PIN;
 	g_i2c.baudrate = 400000;
 	g_i2c.timeout_us = 1000;
-	if(!_i2c_is_initialized(&g_i2c)){
-		_i2c_init(&g_i2c); // 400 kHz I2C
+	if(!i2c_is_initialized(&g_i2c)){
+		i2c_initialize(&g_i2c); // 400 kHz I2C
 		LOG_I("I2C initialized baudrate=400000 sda=%d scl=%d", MPU_SDA_PIN, MPU_SCL_PIN);
 	}else{
 		LOG_W("I2C already initialized");
@@ -174,7 +174,7 @@ mpu_value_t *mpu_init(i2c_hw_t *i2c_hw, mpu_addr_t addr){
  * @return false If @ref g_mpuv is not set or I2C communication failed.
  */
 static bool _mpu_write_reg(uint8_t *data, uint8_t how_many, bool nostop){
-	gc_mpu_ret = _i2c_write_buffer(&g_i2c, g_mpuc.addr, data, how_many, nostop);
+	gc_mpu_ret = i2c_write_buffer(&g_i2c, g_mpuc.addr, data, how_many, nostop);
 	if(gc_mpu_ret){
 		LOG_D("register write ok reg=0x%02X len=%u", data[0], how_many);
 	}else{
@@ -204,7 +204,7 @@ static bool _mpu_read_reg(uint8_t reg, uint8_t *out, uint8_t how_many){
 		LOG_E("register write failed reg=0x%02X", reg);
 		return false;
 	}
-	gc_mpu_ret = _i2c_read_buffer(&g_i2c, g_mpuc.addr, out, how_many);
+	gc_mpu_ret = i2c_read_buffer(&g_i2c, g_mpuc.addr, out, how_many, false);
 	if(gc_mpu_ret){
 		LOG_D("register read ok reg=0x%02X len=%u", reg, how_many);
 		return true;

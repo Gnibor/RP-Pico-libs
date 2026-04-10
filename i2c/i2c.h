@@ -27,7 +27,7 @@ typedef struct {
 } i2c_hw_config;
 
 /** @brief Resets and initializes the I2C controller with the given config. */
-void i2c_init(i2c_hw_config *cfg);
+void i2c_initialize(i2c_hw_config *cfg);
 
 /** @brief Checks if the hardware block is enabled and in Master Mode. */
 bool i2c_is_initialized(const i2c_hw_config *cfg);

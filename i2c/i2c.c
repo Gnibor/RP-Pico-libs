@@ -176,7 +176,7 @@ void i2c_hotplug_recover_sda(uint8_t sda_pin){
 /**
  * @brief Performs Low-Level hardware initialization.
  */
-void i2c_init(i2c_hw_config *cfg) {
+void i2c_initialize(i2c_hw_config *cfg) {
 	if (i2c_is_initialized(cfg)) {
 		LOG_D("I2C hardware already active. Skipping init.");
 		return;
