@@ -35,12 +35,27 @@ static bool _hd44780_write_byte(hd44780_t *lcd, uint8_t byte, bool rs){
 	return true;
 }
 
-bool _hd44780_command(hd44780_t *lcd, uint8_t cmd){
+static bool _hd44780_command(hd44780_t *lcd, uint8_t cmd){
 	if(!_hd44780_write_byte(lcd, cmd, false)){
 		LOG_E("^^^ write failed");
 		return false;
 	}
 	if(cmd == HD44780_CLEAR || cmd == HD44780_HOME) sleep_ms(2);
+
+	return true;
+}
+
+static bool _hd44780_apply_geometry(hd44780_t *lcd){
+	uint8_t function;
+
+	if(!lcd) return false;
+
+	function = HD44780_FUNCTION_SET | ((lcd->rows > 1) ? HD44780_2LINE : HD44780_1LINE);
+
+	if(!_hd44780_write_byte(lcd, function, false)){
+		LOG_E("geometry function set failed");
+		return false;
+	}
 
 	return true;
 }
@@ -76,10 +91,11 @@ bool hd44780_init(hd44780_t *lcd, hd44780_iface_t iface, uint8_t cols, uint8_t r
 	}
 	sleep_us(150);
 
-	if(!_hd44780_write_byte(lcd, HD44780_FUNCTION_SET | ((rows > 1) ? HD44780_2LINE : HD44780_1LINE), false)){
-		LOG_E("^^^ write failed");
+	if(!_hd44780_apply_geometry(lcd)){
+		LOG_E("geometry init failed");
 		return false;
 	}
+
 	if(!_hd44780_write_byte(lcd, HD44780_DISPLAY_CTRL | HD44780_DISPLAY_ON, false)){
 		LOG_E("^^^ write failed");
 		return false;
@@ -104,6 +120,18 @@ bool hd44780_backlight(hd44780_t *lcd, bool on){
 
 bool hd44780_clear(hd44780_t *lcd){ return _hd44780_command(lcd, HD44780_CLEAR); }
 bool hd44780_home(hd44780_t *lcd){ return _hd44780_command(lcd, HD44780_HOME); }
+
+bool hd44780_set_geometry(hd44780_t *lcd, uint8_t cols, uint8_t rows){
+	if(!lcd) return false;
+	if(cols < 1 || rows < 1 || rows > 4) return false;
+
+	lcd->cols = cols;
+	lcd->rows = rows;
+
+	if(!_hd44780_apply_geometry(lcd)) return false;
+
+	return true;
+}
 
 bool hd44780_set_cursor(hd44780_t *lcd, uint8_t row, uint8_t col){
 	static const uint8_t off[] = { 0x00, 0x40, 0x14, 0x54 };

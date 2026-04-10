@@ -8,10 +8,10 @@
 #define PCF_EN (1u << 2)
 #define PCF_BL (1u << 3)
 
-static _i2c_hw_config pcf8574_i2c;
+static i2c_hw_config pcf8574_i2c;
 
 static bool _pcf_write(hd44780_pcf8574_t *dev, uint8_t *buf, uint8_t size){
-	return _i2c_write_buffer(&pcf8574_i2c, dev->addr, buf, size, false) == 1;
+	return i2c_write_buffer(&pcf8574_i2c, dev->addr, buf, size, false) == 1;
 }
 
 static bool _pcf_write_nibble(hd44780_t *lcd, uint8_t nibble, bool rs){
@@ -48,8 +48,8 @@ bool hd44780_pcf8574_init(hd44780_t *lcd, hd44780_pcf8574_t *dev, i2c_hw_t *i2c_
 	pcf8574_i2c.baudrate = 400000;
 	pcf8574_i2c.timeout_us = 5000;
 
-	if(!_i2c_is_initialized(&pcf8574_i2c)){
-		_i2c_init(&pcf8574_i2c); // 400 kHz I2C
+	if(!i2c_is_initialized(&pcf8574_i2c)){
+		i2c_init(&pcf8574_i2c); // 400 kHz I2C
 		LOG_I("I2C initialized baudrate=400000 sda=%d scl=%d", pcf8574_i2c.sda_pin, pcf8574_i2c.scl_pin);
 	}else{
 		LOG_W("I2C already initialized");

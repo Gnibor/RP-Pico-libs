@@ -18,6 +18,7 @@ bool hd44780_backlight(hd44780_t *lcd, bool on);
 bool hd44780_data(hd44780_t *lcd, uint8_t data);
 bool hd44780_clear(hd44780_t *lcd);
 bool hd44780_home(hd44780_t *lcd);
+bool hd44780_set_geometry(hd44780_t *lcd, uint8_t cols, uint8_t rows);
 bool hd44780_set_cursor(hd44780_t *lcd, uint8_t row, uint8_t col);
 bool hd44780_putc(hd44780_t *lcd, char c);
 bool hd44780_puts(hd44780_t *lcd, const char *s);
