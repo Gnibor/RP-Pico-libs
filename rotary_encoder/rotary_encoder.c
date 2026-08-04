@@ -145,7 +145,7 @@ static void rotary_process_rotation(
 {
     const uint8_t current_state = rotary_read_state(rotary);
 
-    /* Mehrfachinterrupt ohne tatsächliche Zustandsänderung ignorieren. */
+    /* Kein tatsächlicher Zustandswechsel. */
     if (current_state == rotary->internal.state)
     {
         return;
@@ -162,17 +162,22 @@ static void rotary_process_rotation(
     const int8_t movement =
         rotary_transition_table[transition];
 
-    /* Ungültige oder neutrale Übergänge ignorieren. */
-    if (movement == 0)
+    /* Nur gültige Quadraturübergänge übernehmen. */
+    if (movement != 0)
     {
-        return;
+        rotary->internal.accumulator += movement;
     }
 
-    rotary->internal.accumulator += movement;
-
-    rotary_process_accumulator(rotary);
+    /*
+     * Schritte ausschließlich an der Rastposition auswerten.
+     * Den Akkumulator nicht löschen: Er enthält gegebenenfalls
+     * die noch nicht überwundene Richtungs-Hysterese.
+     */
+    if (current_state == 0x03u)
+    {
+        rotary_process_accumulator(rotary);
+    }
 }
-
 
 /**
  * @brief Verarbeitet einen Taster-Interrupt.
