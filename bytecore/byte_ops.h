@@ -1,5 +1,5 @@
-#ifndef BYTE_OPS_H
-#define BYTE_OPS_H
+#ifndef _BYTE_OPS_H_
+#define _BYTE_OPS_H_
 
 #include <stdint.h>
 #include <stddef.h>
@@ -320,4 +320,4 @@ static inline void byte_store_u32_le(void *dst, uint32_t v)
 }
 #endif
 
-#endif /* BYTE_OPS_H */
+#endif // _BYTE_OPS_H_
